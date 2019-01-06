@@ -320,21 +320,9 @@ saber_colors_t TranslateSaberColor( const char *name )
 	{
 		return SABER_RGB;
 	}
-	if (!Q_stricmp(name, "pimp"))
-	{
-		return SABER_PIMP;
-	}
 	if (!Q_stricmp(name, "white"))
 	{
 		return SABER_WHITE;
-	}
-	if (!Q_stricmp(name, "scripted"))
-	{
-		return SABER_SCRIPTED;
-	}
-	if (!Q_stricmp(name, "lime"))
-	{
-		return SABER_LIME;
 	}
 	// Custom saber glow, blade & dlight color code
 	if (!Q_stricmp(name, "custom"))

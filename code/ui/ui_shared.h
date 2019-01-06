@@ -254,7 +254,7 @@ void UI_InitMemory( void );
 
 #define MAX_COLOR_RANGES	10
 #define MAX_MENUITEMS		1600
-#define MAX_MENUS			64
+#define MAX_MENUS			128
 
 
 

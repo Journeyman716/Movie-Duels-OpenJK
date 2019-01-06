@@ -448,6 +448,8 @@ vmCvar_t	ui_rgb_saber2_green;
 vmCvar_t	ui_rgb_saber2_blue;
 
 vmCvar_t	ui_SFXSabers;
+vmCvar_t	ui_SFXSabersGlowSize;
+vmCvar_t	ui_SFXSabersCoreSize;
 
 static cvarTable_t cvarTable[] =
 {
@@ -487,6 +489,8 @@ static cvarTable_t cvarTable[] =
 	{ &ui_rgb_saber2_green,		"ui_rgb_saber2_green",	"", NULL, 0 },
 
 	{ &ui_SFXSabers,	        "cg_SFXSabers",     	"0", NULL, CVAR_ARCHIVE },
+	{ &ui_SFXSabersGlowSize,	"cg_SFXSabersGlowSize",	"1.0", NULL, CVAR_ARCHIVE },
+	{ &ui_SFXSabersCoreSize,	"cg_SFXSabersCoreSize",	"1.0", NULL, CVAR_ARCHIVE },
 
 
 };

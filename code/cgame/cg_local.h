@@ -655,6 +655,17 @@ extern	vmCvar_t		cg_speedTrail;
 extern	vmCvar_t		cg_fovViewmodel;
 extern	vmCvar_t		cg_fovViewmodelAdjust;
 
+extern	vmCvar_t		cg_trueguns;
+extern	vmCvar_t		cg_trueroll;
+extern	vmCvar_t		cg_trueflip;
+extern	vmCvar_t		cg_truespin;
+extern	vmCvar_t		cg_truemoveroll;
+extern  vmCvar_t		cg_truesaberonly;
+extern	vmCvar_t		cg_trueeyeposition;
+extern	vmCvar_t		cg_trueinvertsaber;
+extern	vmCvar_t		cg_truefov;
+extern	vmCvar_t		cg_truebobbing;
+
 extern	vmCvar_t		cg_scaleVehicleSensitivity;
 
 void CG_NewClientinfo( int clientNum );
@@ -1243,5 +1254,9 @@ void CG_PlayEffectID( const int fxID, vec3_t origin, const vec3_t fwd );
 void	CG_ClearLightStyles( void );
 void	CG_RunLightStyles( void );
 void	CG_SetLightstyle( int i );
+
+//trueview stuff
+void CG_TrueViewInit(void);
+void CG_AdjustEyePos(const char *modelName);
 
 #endif	//__CG_LOCAL_H__

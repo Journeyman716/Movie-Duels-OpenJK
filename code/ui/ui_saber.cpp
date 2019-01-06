@@ -47,6 +47,8 @@ extern vmCvar_t	ui_rgb_saber2_green;
 extern vmCvar_t	ui_rgb_saber2_blue;
 
 extern vmCvar_t	ui_SFXSabers;
+extern vmCvar_t	ui_SFXSabersGlowSize;
+extern vmCvar_t	ui_SFXSabersCoreSize;
 
 static qhandle_t redSaberGlowShader;
 static qhandle_t redSaberCoreShader;
@@ -638,10 +640,6 @@ void UI_DoSFXSaber(vec3_t blade_muz, vec3_t blade_dir, float lengthMax, float ra
 		glow = purpleSaberGlowShader;
 		sfxSaberBladeShader = re.RegisterShader("SFX_Sabers/saber_blade");
 		break;
-	case SABER_LIME:
-		glow = limeSaberGlowShader;
-		sfxSaberBladeShader = re.RegisterShader("SFX_Sabers/saber_blade");
-		break;
 	case SABER_RGB:
 		glow = rgbSaberGlowShader;
 		sfxSaberBladeShader = re.RegisterShader("SFX_Sabers/saber_blade");
@@ -678,8 +676,8 @@ void UI_DoSFXSaber(vec3_t blade_muz, vec3_t blade_dir, float lengthMax, float ra
 		radiusmult = 1.0;
 	}
 
-	effectradius	= ((radius * 1.6) + crandoms() * 0.1f)*radiusmult;
-	coreradius		= ((radius * 0.4) + crandoms() * 0.1f)*radiusmult;
+	effectradius	= ((radius * 1.6) + crandoms() * 0.1f)*radiusmult*ui_SFXSabersGlowSize.value;
+	coreradius		= ((radius * 0.4) + crandoms() * 0.1f)*radiusmult*ui_SFXSabersCoreSize.value;
 
 	{
 		if (blade_len - ((effectradius*AngleScale) / 2) > 0)
@@ -786,12 +784,6 @@ void UI_DoEp1Saber(vec3_t blade_muz, vec3_t blade_dir, float lengthMax, float ra
 		blade = ep1SaberCoreShader;
 		ep1SaberCoreShader = re.RegisterShader("Ep1Sabers/saber_core");
 		VectorSet(rgb, 0.9f, 0.2f, 1.0f);
-		break;
-	case SABER_LIME:
-		glow = limeSaberGlowShader;
-		blade = ep1SaberCoreShader;
-		ep1SaberCoreShader = re.RegisterShader("Ep1Sabers/saber_core");
-		VectorSet(rgb, 0.2f, 1.0f, 0.2f);
 		break;
 	case SABER_RGB:
 		glow = rgbSaberGlowShader;
@@ -947,12 +939,6 @@ void UI_DoEp2Saber(vec3_t blade_muz, vec3_t blade_dir, float lengthMax, float ra
 		ep2SaberCoreShader = re.RegisterShader("Ep2Sabers/saber_core");
 		VectorSet(rgb, 0.9f, 0.2f, 1.0f);
 		break;
-	case SABER_LIME:
-		glow = limeSaberGlowShader;
-		blade = ep2SaberCoreShader;
-		ep2SaberCoreShader = re.RegisterShader("Ep2Sabers/saber_core");
-		VectorSet(rgb, 0.2f, 1.0f, 0.2f);
-		break;
 	case SABER_RGB:
 		glow = rgbSaberGlowShader;
 		blade = ep2SaberCoreShader;
@@ -1107,12 +1093,6 @@ void UI_DoEp3Saber(vec3_t blade_muz, vec3_t blade_dir, float lengthMax, float ra
 		ep3SaberCoreShader = re.RegisterShader("Ep3Sabers/saber_core");
 		VectorSet(rgb, 0.9f, 0.2f, 1.0f);
 		break;
-	case SABER_LIME:
-		glow = limeSaberGlowShader;
-		blade = ep3SaberCoreShader;
-		ep3SaberCoreShader = re.RegisterShader("Ep3Sabers/saber_core");
-		VectorSet(rgb, 0.2f, 1.0f, 0.2f);
-		break;
 	case SABER_RGB:
 		glow = rgbSaberGlowShader;
 		blade = ep3SaberCoreShader;
@@ -1216,6 +1196,7 @@ void UI_DoOTSaber(vec3_t blade_muz, vec3_t blade_dir, float lengthMax, float rad
 	vec3_t	mid, rgb = { 1,1,1 };
 	float	radiusmult, effectradius, coreradius;
 	float	blade_len;
+	float	glowscale = 0.5;
 	float	effectalpha = 0.8f;
 	float	AngleScale = 1.0f;
 
@@ -1266,12 +1247,6 @@ void UI_DoOTSaber(vec3_t blade_muz, vec3_t blade_dir, float lengthMax, float rad
 		blade = otSaberCoreShader;
 		otSaberCoreShader = re.RegisterShader("OTSabers/ot_saberCore");
 		VectorSet(rgb, 0.9f, 0.2f, 1.0f);
-		break;
-	case SABER_LIME:
-		glow = limeSaberGlowShader;
-		blade = otSaberCoreShader;
-		otSaberCoreShader = re.RegisterShader("OTSabers/ot_saberCore");
-		VectorSet(rgb, 0.2f, 1.0f, 0.2f);
 		break;
 	case SABER_RGB:
 		glow = rgbSaberGlowShader;
@@ -1417,11 +1392,6 @@ void UI_DoSaber(vec3_t origin, vec3_t dir, float length, float lengthMax, float 
 		blade = purpleSaberCoreShader;
 		VectorSet(rgb, 0.9f, 0.2f, 1.0f);
 		break;
-	case SABER_LIME:
-		glow = limeSaberGlowShader;
-		blade = limeSaberCoreShader;
-		VectorSet(rgb, 0.2f, 1.0f, 0.2f);
-		break;
 	case SABER_RGB:
 		glow = rgbSaberGlowShader;
 		blade = rgbSaberCoreShader;
@@ -1555,10 +1525,6 @@ saber_colors_t TranslateSaberColor(const char *name)
 	if (!Q_stricmp(name, "custom"))
 	{
 		return SABER_CUSTOM;
-	}
-	if (!Q_stricmp(name, "lime"))
-	{
-		return SABER_LIME;
 	}
 	if (!Q_stricmp(name, "unstable_red"))
 	{

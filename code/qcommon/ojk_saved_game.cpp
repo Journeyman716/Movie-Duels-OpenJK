@@ -937,7 +937,7 @@ std::string SavedGame::generate_path(
 		'/',
 		'_');
 
-	return "Account/Saved-Missions-MovieDuels/" + normalized_file_name + ".sav";
+	return "saves/" + normalized_file_name + ".sav";
 }
 
 std::string SavedGame::get_chunk_id_string(

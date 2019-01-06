@@ -326,11 +326,8 @@ typedef enum
 	SABER_UNSTABLE_RED,
 	SABER_BLACK,
 	SABER_WHITE,
-	SABER_PIMP,
-	SABER_SCRIPTED,
 	// Custom saber glow, blade & dlight color code
 	SABER_CUSTOM,
-	SABER_LIME,
 	SABER_RGB = (1 << 24)
 } saber_colors_t;
 

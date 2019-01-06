@@ -364,27 +364,19 @@ void CG_RegisterWeapon( int weaponNum ) {
 		cgs.media.purpleSaberGlowShader		= cgi_R_RegisterShader( "gfx/effects/sabers/purple_glow" );
 		cgs.media.purpleSaberCoreShader		= cgi_R_RegisterShader( "gfx/effects/sabers/purple_line" );
 
+		cgs.media.blackSaberGlowShader = cgi_R_RegisterShader("gfx/effects/sabers/black_glow");
+		cgs.media.blackSaberCoreShader = cgi_R_RegisterShader("gfx/effects/sabers/black_line");
+		cgs.media.blackSaberBlurShader = cgi_R_RegisterShader("gfx/effects/sabers/blackSaberBlur");
 		cgs.media.unstableRedSaberGlowShader = cgi_R_RegisterShader("gfx/effects/sabers/unstable_red_glow");
 		cgs.media.unstableRedSaberCoreShader = cgi_R_RegisterShader("gfx/effects/sabers/unstable_red_line");
+		cgs.media.rgbSaberGlowShader = cgi_R_RegisterShader("gfx/effects/sabers/rgb_glow");
+		cgs.media.rgbSaberCoreShader = cgi_R_RegisterShader("gfx/effects/sabers/rgb_line");
 
 		cgs.media.sfxSaberBladeShader       = cgi_R_RegisterShader( "SFX_Sabers/saber_blade");
 		cgs.media.sfxSaberEndShader         = cgi_R_RegisterShader( "SFX_Sabers/saber_end");
 		cgs.media.sfxSaberTrailShader		= cgi_R_RegisterShader( "SFX_Sabers/saber_trail" );
+		cgs.media.blackSaberTrail = cgi_R_RegisterShader("gfx/effects/sabers/blacksaberBlur");
 		
-		cgs.media.blackSaberGlowShader		= cgi_R_RegisterShader( "gfx/effects/sabers/black_glow" );
-		cgs.media.blackSaberCoreShader		= cgi_R_RegisterShader( "gfx/effects/sabers/black_line" );
-		cgs.media.blackSaberBlurShader		= cgi_R_RegisterShader( "gfx/effects/sabers/blackSaberBlur");
-		cgs.media.rgbSaberGlowShader		= cgi_R_RegisterShader( "gfx/effects/sabers/rgb_glow" );
-		cgs.media.rgbSaberCoreShader		= cgi_R_RegisterShader( "gfx/effects/sabers/rgb_line" );
-		cgs.media.blackIgniteFlare          = cgi_R_RegisterShader( "Ep3Sabers/black_ignite_flare");
-		cgs.media.whiteIgniteFlare          = cgi_R_RegisterShader( "Ep3Sabers/white_ignite_flare");
-		cgs.media.tfuSaberEndShader         = cgi_R_RegisterShader( "SFX_Sabers/saber_tip");
-		//TFA Sabers
-		cgs.media.rgbTFASaberCoreShader     = cgi_R_RegisterShader( "gfx/effects/sabers/blade_TFA");
-		cgs.media.unstableBlurShader        = cgi_R_RegisterShader( "gfx/effects/sabers/trail_unstable");
-		cgs.media.blackSaberTrail           = cgi_R_RegisterShader( "gfx/effects/sabers/blacksaberBlur" );
-		cgs.media.limeSaberGlowShader		= cgi_R_RegisterShader( "gfx/effects/sabers/lime_glow" );
-		cgs.media.limeSaberCoreShader		= cgi_R_RegisterShader( "gfx/effects/sabers/lime_line" );		
 		//Original Trilogy Sabers
 		cgs.media.otSaberCoreShader			= cgi_R_RegisterShader( "OTsabers/ot_saberCore" );
 		cgs.media.redOTGlowShader			= cgi_R_RegisterShader( "OTsabers/ot_redGlow" );
@@ -2808,6 +2800,19 @@ void CG_Weapon_f( void )
 			i++;
 		}
 	}
+else if (num == WP_BLASTER_PISTOL && cg.snap->ps.weapon == WP_BLASTER_PISTOL)
+{
+	num = WP_BRYAR_PISTOL, WP_CLONEPISTOL, WP_REY, WP_JANGO;
+}
+else if (num == WP_BLASTER && cg.snap->ps.weapon == WP_BLASTER)
+{
+	num = WP_CLONECARBINE, WP_CLONECOMMANDO, WP_BATTLEDROID, WP_REBELBLASTER, WP_THEFIRSTORDER;
+}
+
+else if (num == WP_REPEATER && cg.snap->ps.weapon == WP_REPEATER)
+{
+	num = WP_CLONERIFLE, WP_REBELRIFLE, WP_BOBA;
+}
 
 	if (!CG_WeaponSelectable(num, cg.snap->ps.weapon, qfalse))
 	{

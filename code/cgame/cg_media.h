@@ -178,31 +178,22 @@ typedef struct {
 	qhandle_t	blueSaberCoreShader;
 	qhandle_t	purpleSaberGlowShader;
 	qhandle_t	purpleSaberCoreShader;
-	qhandle_t   redIgniteFlare;
-	qhandle_t   orangeIgniteFlare;
-	qhandle_t   yellowIgniteFlare;
-	qhandle_t   greenIgniteFlare;
-	qhandle_t   blueIgniteFlare;
-	qhandle_t   purpleIgniteFlare;
-	qhandle_t	unstableRedSaberGlowShader;
-	qhandle_t	unstableRedSaberCoreShader;
 	qhandle_t	blackSaberGlowShader;
 	qhandle_t	blackSaberCoreShader;
 	qhandle_t	blackSaberBlurShader;
+	qhandle_t	unstableRedSaberGlowShader;
+	qhandle_t	unstableRedSaberCoreShader;
 	qhandle_t	rgbSaberGlowShader;
 	qhandle_t	rgbSaberCoreShader;
-	qhandle_t   rgbTFASaberCoreShader;
-	qhandle_t	unstableBlurShader;
-	qhandle_t   tfuSaberEndShader;
-	qhandle_t	blackSaberTrail;
-	qhandle_t   sfxSaberBladeShader;
-	qhandle_t   sfxSaberEndShader;
-	qhandle_t   sfxSaberTrailShader;
 	// Custom saber glow, blade & dlight color code
 	qhandle_t	customSaberGlowShader;
 	qhandle_t	customSaberCoreShader;
-	qhandle_t	limeSaberGlowShader;
-	qhandle_t	limeSaberCoreShader;
+
+	// SFX Sabers
+	qhandle_t   sfxSaberBladeShader;
+	qhandle_t   sfxSaberEndShader;
+	qhandle_t   sfxSaberTrailShader;
+	qhandle_t	blackSaberTrail;
 
 	//Original Trilogy Sabers
 	qhandle_t otSaberCoreShader;
@@ -237,6 +228,12 @@ typedef struct {
 	qhandle_t ep3SaberCoreShader;
 	qhandle_t whiteIgniteFlare02;
 	qhandle_t blackIgniteFlare02;
+	qhandle_t redIgniteFlare;
+	qhandle_t orangeIgniteFlare;
+	qhandle_t yellowIgniteFlare;
+	qhandle_t greenIgniteFlare;
+	qhandle_t blueIgniteFlare;
+	qhandle_t purpleIgniteFlare;
 	qhandle_t redEp3GlowShader;
 	qhandle_t orangeEp3GlowShader;
 	qhandle_t yellowEp3GlowShader;

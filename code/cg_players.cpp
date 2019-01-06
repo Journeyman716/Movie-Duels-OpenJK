@@ -44,10 +44,9 @@ extern vmCvar_t	cg_debugHealthBars;
 
 extern vmCvar_t cg_ignitionSpeed;
 extern vmCvar_t cg_ignitionSpeedstaff;
+extern vmCvar_t cg_ignitionSpeedvader;
 
 extern vmCvar_t	cg_SFXSabers;
-extern vmCvar_t	cg_SFXSabersGlowSize;
-extern vmCvar_t	cg_SFXSabersCoreSize;
 
 /*
 
@@ -3103,7 +3102,7 @@ static void CG_PlayerAngles( centity_t *cent, vec3_t legs[3], vec3_t torso[3], v
 	int			i;
 	qboolean	looking = qfalse, talking = qfalse;
 
-	if ((cg.renderingThirdPerson || (cg_trueguns.integer && !cg.zoomMode) || cent->gent->client->ps.weapon == WP_SABER || cent->gent->client->ps.weapon == WP_MELEE) && cent->gent && cent->gent->s.number == 0)
+	if ( cg.renderingThirdPerson && cent->gent && cent->gent->s.number == 0 )
 	{
 		// If we are rendering third person, we should just force the player body to always fully face
 		//	whatever way they are looking, otherwise, you can end up with gun shots coming off of the
@@ -5714,6 +5713,9 @@ static void CG_CustomRGBForSaberColor(saber_colors_t color, vec3_t rgb)
 	case SABER_PURPLE:
 		VectorSet(rgb, 0.9f, 0.2f, 1.0f);
 		break;
+	case SABER_LIME:
+		VectorSet(rgb, 0.2f, 1.0f, 0.2f);
+		break;
 		// Custom saber glow, blade & dlight color code
 	case SABER_CUSTOM:
 		VectorSet(rgb, saberInfo->saberDLightColor[0], saberInfo->saberDLightColor[1], saberInfo->saberDLightColor[2]);
@@ -5746,6 +5748,9 @@ static void CG_RGBForSaberColor( saber_colors_t color, vec3_t rgb )
 			break;
 		case SABER_PURPLE:
 			VectorSet( rgb, 0.9f, 0.2f, 1.0f );
+			break;
+		case SABER_LIME:
+			VectorSet(rgb, 0.2f, 1.0f, 0.2f);
 			break;
 		case SABER_UNSTABLE_RED:
 			VectorSet(rgb, 1.0f, 0.2f, 0.2f);
@@ -5880,6 +5885,162 @@ static void CG_DoSaberLight( saberInfo_t *saber )
 		}
 
 		cgi_R_AddLightToScene( mid, diameter + (Q_flrand(0.0f, 1.0f)*8.0f), rgb[0], rgb[1], rgb[2] );
+	}
+}
+
+static void CG_DoSaber(vec3_t origin, vec3_t dir, float length, float lengthMax, float radius, saber_colors_t color, int rfx, qboolean doLight)
+{
+	vec3_t		mid;
+	qhandle_t	blade = 0, glow = 0;
+	refEntity_t saber;
+	float radiusmult;
+	qhandle_t ignite = 0;
+	float     ignite_len, ignite_radius;
+	vec3_t rgb = { 1,1,1 };
+
+	if (length < MIN_SABERBLADE_DRAW_LENGTH)
+	{
+		// if the thing is so short, just forget even adding me.
+		return;
+	}
+
+	// Find the midpoint of the saber for lighting purposes
+	VectorMA(origin, length * 0.5f, dir, mid);
+
+	switch( color )
+	{
+		case SABER_RED:
+			glow = cgs.media.redSaberGlowShader;
+			blade = cgs.media.redSaberCoreShader;
+			break;
+		case SABER_ORANGE:
+			glow = cgs.media.orangeSaberGlowShader;
+			blade = cgs.media.orangeSaberCoreShader;
+			break;
+		case SABER_YELLOW:
+			glow = cgs.media.yellowSaberGlowShader;
+			blade = cgs.media.yellowSaberCoreShader;
+			break;
+		case SABER_GREEN:
+			glow = cgs.media.greenSaberGlowShader;
+			blade = cgs.media.greenSaberCoreShader;
+			break;
+		case SABER_BLUE:
+			glow = cgs.media.blueSaberGlowShader;
+			blade = cgs.media.blueSaberCoreShader;
+			break;
+		case SABER_PURPLE:
+			glow = cgs.media.purpleSaberGlowShader;
+			blade = cgs.media.purpleSaberCoreShader;
+			break;
+		case SABER_WHITE:
+		case SABER_RGB:
+			glow = cgs.media.rgbSaberGlowShader;
+			blade = cgs.media.rgbSaberCoreShader;
+			break;
+		case SABER_BLACK:
+			glow = cgs.media.blackSaberGlowShader;
+			blade = cgs.media.blackSaberCoreShader;
+			break;
+		case SABER_UNSTABLE_RED:
+			glow = cgs.media.redSaberGlowShader;
+			blade = cgs.media.unstableRedSaberCoreShader;
+			break;
+		default:
+			glow = cgs.media.rgbSaberGlowShader;
+			blade = cgs.media.rgbSaberCoreShader;
+			break;
+	}
+
+	if (doLight)
+	{
+		CG_RGBForSaberColor(color, rgb);
+		cgi_R_AddLightToScene(mid, (length*1.4f) + (Q_flrand(0.0f, 1.0f)*3.0f), rgb[0], rgb[1], rgb[2]);
+	}
+
+	memset(&saber, 0, sizeof(refEntity_t));
+
+	// Saber glow is it's own ref type because it uses a ton of sprites, otherwise it would eat up too many
+	//	refEnts to do each glow blob individually
+	saber.saberLength = length;
+
+	// Jeff, I did this because I foolishly wished to have a bright halo as the saber is unleashed.
+	// It's not quite what I'd hoped tho.  If you have any ideas, go for it!  --Pat
+	if (length < lengthMax)
+	{
+		radiusmult = 1.0 + (2.0 / length);		// Note this creates a curve, and length cannot be < 0.5.
+	}
+	else
+	{
+		radiusmult = 1.0;
+	}
+
+	float radiusRange = radius * 0.075f;
+	float radiusStart = radius - radiusRange;
+
+	saber.radius = (radiusStart + Q_flrand(-1.0f, 1.0f) * radiusRange)*radiusmult;
+
+	ignite_len = lengthMax * 0.30f;
+	ignite_radius = saber.radius * saber.radius * 1.5f;
+	ignite_radius -= length;
+	ignite_radius *= 2.2f;
+
+	VectorCopy(origin, saber.origin);
+	VectorCopy(dir, saber.axis[0]);
+	saber.reType = RT_SABER_GLOW;
+	saber.customShader = glow;
+	saber.shaderRGBA[0] = saber.shaderRGBA[1] = saber.shaderRGBA[2] = saber.shaderRGBA[3] = 0xff;
+	saber.renderfx = rfx;
+
+	if (color >= SABER_RGB)
+	{
+		saber.shaderRGBA[0] = ((color) & 0xff);
+		saber.shaderRGBA[1] = ((color >> 8) & 0xff);
+		saber.shaderRGBA[2] = ((color >> 16) & 0xff);
+	}
+
+	cgi_R_AddRefEntityToScene(&saber);
+
+	// Do the hot core
+	VectorMA(origin, length, dir, saber.origin);
+	VectorMA(origin, -1, dir, saber.oldorigin);
+
+	saber.customShader = blade;
+	saber.reType = RT_LINE;
+	radiusStart = radius / 3.0f;
+	saber.radius = (radiusStart + Q_flrand(-1.0f, 1.0f) * radiusRange)*radiusmult;
+	saber.shaderTexCoord[0] = saber.shaderTexCoord[1] = 1.0f;
+	saber.shaderRGBA[0] = saber.shaderRGBA[1] = saber.shaderRGBA[2] = saber.shaderRGBA[3] = 0xff;
+
+	cgi_R_AddRefEntityToScene(&saber);
+
+
+	//Ignition Flare
+	//--------------------
+	//GR - Do the flares
+
+	if (length <= ignite_len)
+	{
+		saber.renderfx = rfx;
+		saber.radius = ignite_radius;
+		VectorCopy(origin, saber.origin);
+		saber.reType = RT_SPRITE;
+		saber.customShader = ignite;
+		saber.shaderRGBA[0] = 0xff;
+		saber.shaderRGBA[1] = 0xff;
+		saber.shaderRGBA[2] = 0xff;
+		saber.shaderRGBA[3] = 0xff;
+
+		cgi_R_AddRefEntityToScene(&saber);
+
+		saber.customShader = cgs.media.whiteIgniteFlare;
+		saber.radius = ignite_radius * 0.25f;
+		saber.shaderRGBA[0] = 0xff;
+		saber.shaderRGBA[1] = 0xff;
+		saber.shaderRGBA[2] = 0xff;
+		saber.shaderRGBA[3] = 0xff;
+
+		cgi_R_AddRefEntityToScene(&saber);
 	}
 }
 
@@ -6988,7 +7149,7 @@ void CG_DoEp2Saber( vec3_t blade_muz, vec3_t blade_tip, vec3_t trail_tip, vec3_t
 			igniteRGB[2] = 64.0f;
 			break;
 		case SABER_UNSTABLE_RED:
-			glow = cgs.media.redEp2GlowShader;
+			glow = cgs.media.redEp1GlowShader;
 			cgs.media.ep2SaberCoreShader = cgi_R_RegisterShader("SFX_Sabers/saber_blade_unstable");
 			cgs.media.sfxSaberEndShader = cgi_R_RegisterShader("SFX_Sabers/saber_end");
 			cgs.media.sfxSaberTrailShader = cgi_R_RegisterShader("SFX_Sabers/saber_trail");
@@ -7466,7 +7627,7 @@ void CG_DoEp3Saber( vec3_t blade_muz, vec3_t blade_tip, vec3_t trail_tip, vec3_t
 			ignite = cgs.media.blackIgniteFlare;
 			break;
 		case SABER_UNSTABLE_RED:
-			glow = cgs.media.redEp3GlowShader;
+			glow = cgs.media.redEp1GlowShader;
 			cgs.media.ep3SaberCoreShader = cgi_R_RegisterShader("SFX_Sabers/saber_blade_unstable");
 			cgs.media.sfxSaberEndShader = cgi_R_RegisterShader("SFX_Sabers/saber_end");
 			cgs.media.sfxSaberTrailShader = cgi_R_RegisterShader("SFX_Sabers/saber_trail");
@@ -7932,7 +8093,7 @@ void CG_DoOTSaber( vec3_t blade_muz, vec3_t blade_tip, vec3_t trail_tip, vec3_t 
 			cgs.media.sfxSaberTrailShader = cgi_R_RegisterShader("SFX_Sabers/saber_trail_black");
 			break;
 		case SABER_UNSTABLE_RED:
-			glow = cgs.media.redOTGlowShader;
+			glow = cgs.media.redEp1GlowShader;
 			cgs.media.otSaberCoreShader = cgi_R_RegisterShader("SFX_Sabers/saber_blade_unstable");
 			cgs.media.sfxSaberEndShader = cgi_R_RegisterShader("SFX_Sabers/saber_end");
 			cgs.media.sfxSaberTrailShader = cgi_R_RegisterShader("SFX_Sabers/saber_trail");
@@ -8371,7 +8532,7 @@ void CG_DoSFXSaber( vec3_t blade_muz, vec3_t blade_tip, vec3_t trail_tip, vec3_t
 			cgs.media.sfxSaberTrailShader = cgi_R_RegisterShader("SFX_Sabers/saber_trail_black");
 			break;
 		case SABER_UNSTABLE_RED:
-			glow = cgs.media.redSaberGlowShader;
+			glow = cgs.media.redEp1GlowShader;
 			cgs.media.sfxSaberBladeShader = cgi_R_RegisterShader("SFX_Sabers/saber_blade_unstable");
 			cgs.media.sfxSaberEndShader = cgi_R_RegisterShader("SFX_Sabers/saber_end");
 			cgs.media.sfxSaberTrailShader = cgi_R_RegisterShader("SFX_Sabers/saber_trail");
@@ -8471,8 +8632,8 @@ void CG_DoSFXSaber( vec3_t blade_muz, vec3_t blade_tip, vec3_t trail_tip, vec3_t
 		radiusmult = 1.0;
 	}
 
-	effectradius	= ((radius * 1.6 * v1) + crandoms() * 0.1f)*radiusmult*cg_SFXSabersGlowSize.value;
-	coreradius		= ((radius * 0.4 * v2) + crandoms() * 0.1f)*radiusmult*cg_SFXSabersCoreSize.value;
+	effectradius	= ((radius * 1.6 * v1) + crandoms() * 0.1f)*radiusmult;
+	coreradius		= ((radius * 0.4 * v2) + crandoms() * 0.1f)*radiusmult;
         
 	{
 		saber.renderfx = rfx;
@@ -8695,133 +8856,6 @@ void CG_DoSFXSaber( vec3_t blade_muz, vec3_t blade_tip, vec3_t trail_tip, vec3_t
 }
 //[/SFXSabers]
 
-static void CG_DoSaber(vec3_t origin, vec3_t dir, float length, float lengthMax, float radius, saber_colors_t color, int rfx, qboolean doLight)
-{
-	vec3_t		mid;
-	qhandle_t	blade = 0, glow = 0;
-	refEntity_t saber;
-	float radiusmult;
-	qhandle_t ignite = 0;
-	float     ignite_len, ignite_radius;
-	vec3_t rgb = { 1,1,1 };
-
-	if (length < MIN_SABERBLADE_DRAW_LENGTH)
-	{
-		// if the thing is so short, just forget even adding me.
-		return;
-	}
-
-	// Find the midpoint of the saber for lighting purposes
-	VectorMA(origin, length * 0.5f, dir, mid);
-
-	switch (color)
-	{
-	case SABER_RED:
-		glow = cgs.media.redSaberGlowShader;
-		blade = cgs.media.redSaberCoreShader;
-		break;
-	case SABER_ORANGE:
-		glow = cgs.media.orangeSaberGlowShader;
-		blade = cgs.media.orangeSaberCoreShader;
-		break;
-	case SABER_YELLOW:
-		glow = cgs.media.yellowSaberGlowShader;
-		blade = cgs.media.yellowSaberCoreShader;
-		break;
-	case SABER_GREEN:
-		glow = cgs.media.greenSaberGlowShader;
-		blade = cgs.media.greenSaberCoreShader;
-		break;
-	case SABER_BLUE:
-		glow = cgs.media.blueSaberGlowShader;
-		blade = cgs.media.blueSaberCoreShader;
-		break;
-	case SABER_PURPLE:
-		glow = cgs.media.purpleSaberGlowShader;
-		blade = cgs.media.purpleSaberCoreShader;
-		break;
-	case SABER_WHITE:
-	case SABER_RGB:
-		glow = cgs.media.rgbSaberGlowShader;
-		blade = cgs.media.rgbSaberCoreShader;
-		break;
-	case SABER_BLACK:
-		glow = cgs.media.blackSaberGlowShader;
-		blade = cgs.media.blackSaberCoreShader;
-		break;
-	case SABER_UNSTABLE_RED:
-		glow = cgs.media.redSaberGlowShader;
-		blade = cgs.media.unstableRedSaberCoreShader;
-		break;
-	default:
-		glow = cgs.media.rgbSaberGlowShader;
-		blade = cgs.media.rgbSaberCoreShader;
-		break;
-	}
-
-	if (doLight)
-	{
-		CG_RGBForSaberColor(color, rgb);
-		cgi_R_AddLightToScene(mid, (length*1.4f) + (Q_flrand(0.0f, 1.0f)*3.0f), rgb[0], rgb[1], rgb[2]);
-	}
-
-	memset(&saber, 0, sizeof(refEntity_t));
-
-	// Saber glow is it's own ref type because it uses a ton of sprites, otherwise it would eat up too many
-	//	refEnts to do each glow blob individually
-	saber.saberLength = length;
-
-	// Jeff, I did this because I foolishly wished to have a bright halo as the saber is unleashed.
-	// It's not quite what I'd hoped tho.  If you have any ideas, go for it!  --Pat
-	if (length < lengthMax)
-	{
-		radiusmult = 1.0 + (2.0 / length);		// Note this creates a curve, and length cannot be < 0.5.
-	}
-	else
-	{
-		radiusmult = 1.0;
-	}
-
-	float radiusRange = radius * 0.075f;
-	float radiusStart = radius - radiusRange;
-
-	saber.radius = (radiusStart + Q_flrand(-1.0f, 1.0f) * radiusRange)*radiusmult;
-
-	ignite_len = lengthMax * 0.30f;
-	ignite_radius = saber.radius * saber.radius * 1.5f;
-	ignite_radius -= length;
-	ignite_radius *= 2.2f;
-
-	VectorCopy(origin, saber.origin);
-	VectorCopy(dir, saber.axis[0]);
-	saber.reType = RT_SABER_GLOW;
-	saber.customShader = glow;
-	saber.shaderRGBA[0] = saber.shaderRGBA[1] = saber.shaderRGBA[2] = saber.shaderRGBA[3] = 0xff;
-	saber.renderfx = rfx;
-
-	if (color >= SABER_RGB)
-	{
-		saber.shaderRGBA[0] = ((color) & 0xff);
-		saber.shaderRGBA[1] = ((color >> 8) & 0xff);
-		saber.shaderRGBA[2] = ((color >> 16) & 0xff);
-	}
-
-	cgi_R_AddRefEntityToScene(&saber);
-
-	// Do the hot core
-	VectorMA(origin, length, dir, saber.origin);
-	VectorMA(origin, -1, dir, saber.oldorigin);
-
-	saber.customShader = blade;
-	saber.reType = RT_LINE;
-	radiusStart = radius / 3.0f;
-	saber.radius = (radiusStart + Q_flrand(-1.0f, 1.0f) * radiusRange)*radiusmult;
-	saber.shaderTexCoord[0] = saber.shaderTexCoord[1] = 1.0f;
-	saber.shaderRGBA[0] = saber.shaderRGBA[1] = saber.shaderRGBA[2] = saber.shaderRGBA[3] = 0xff;
-
-	cgi_R_AddRefEntityToScene(&saber);
-}
-
 #define	MAX_MARK_FRAGMENTS	128
 #define	MAX_MARK_POINTS		384
 extern markPoly_t *CG_AllocMark();
@@ -8953,15 +8987,11 @@ void CG_CheckSaberInWater( centity_t *cent, centity_t *scent, int saberNum, int 
 	client->ps.saberEventFlags &= ~SEF_INWATER;
 }
 
+#define SABER_TRAIL_TIME	40.0f
 static void CG_AddSaberBladeGo( centity_t *cent, centity_t *scent, refEntity_t *saber, int renderfx, int modelIndex, vec3_t origin, vec3_t angles, int saberNum, int bladeNum )
 {
-	vec3_t	org_, end,//org_future,
-		axis_[3] = { {0,0,0}, {0,0,0}, {0,0,0} };//, axis_future[3]={0,0,0, 0,0,0, 0,0,0};	// shut the compiler up
-	//[SFXSabers]
-	vec3_t	rgb1 = { 255.0f,255.0f,255.0f };
-	//[/SFXSabers]
+	vec3_t	org_, end, axis_[3] = { {0,0,0}, {0,0,0}, {0,0,0} };
 	trace_t	trace;
-	int i = 0;
 	float	length;
 	int		bolt;
 	mdxaBone_t	boltMatrix;
@@ -8969,154 +8999,63 @@ static void CG_AddSaberBladeGo( centity_t *cent, centity_t *scent, refEntity_t *
 
 	gclient_t *client = cent->gent->client;
 
-	if ( !client)
+	if (!client)
 	{
 		return;
 	}
-/*
-Ghoul2 Insert Start
-*/
-
-//	if (scent->gent->ghoul2.size())
-	if(1)
+	
+	if (1)
 	{
-		if ( !scent ||
+		if (!scent ||
 			modelIndex == -1 ||
 			scent->gent->ghoul2.size() <= modelIndex ||
-			scent->gent->ghoul2[modelIndex].mModelindex == -1 )
+			scent->gent->ghoul2[modelIndex].mModelindex == -1)
 		{
 			return;
 		}
 
-		/*
-		if ( cent->gent->client->ps.saber[saberNum].type == SABER_CLAW )
-		{//hack - come off the forearm
-			int	fwdAxis = POSITIVE_Y;
-			int	rtAxis = POSITIVE_X;
-			int	upAxis = POSITIVE_Z;
-			if ( saberNum == 0 )
-			{
-				bolt = gi.G2API_AddBolt( &cent->gent->ghoul2[cent->gent->playerModel], "*r_hand_cap_r_arm" );
-				if ( bolt == -1 )
-				{
-					bolt = cent->gent->handRBolt;
-					fwdAxis = NEGATIVE_Y;
-					rtAxis = POSITIVE_Z;
-					upAxis = NEGATIVE_X;
-				}
-			}
-			else
-			{
-				bolt = gi.G2API_AddBolt( &cent->gent->ghoul2[cent->gent->playerModel], "*l_hand_cap_l_arm" );
-				if ( bolt == -1 )
-				{
-					bolt = cent->gent->handLBolt;
-					fwdAxis = NEGATIVE_Y;
-					rtAxis = POSITIVE_Z;
-					upAxis = POSITIVE_X;
-				}
-			}
+		char *tagName = va("*blade%d", bladeNum + 1);
+		bolt = gi.G2API_AddBolt(&scent->gent->ghoul2[modelIndex], tagName);
+
+		if (bolt == -1)
+		{
 			tagHack = qtrue;//use the hacked switch statement below to position and orient the blades
-			// figure out where the actual model muzzle is
-			gi.G2API_GetBoltMatrix( cent->gent->ghoul2, cent->gent->playerModel, bolt, &boltMatrix, angles, origin, cg.time, cgs.model_draw, cent->currentState.modelScale );
-			// work the matrix axis stuff into the original axis and origins used.
-			gi.G2API_GiveMeVectorFromMatrix(boltMatrix, ORIGIN, org_);
-			gi.G2API_GiveMeVectorFromMatrix(boltMatrix, (Eorientations)fwdAxis, axis_[0]);
-			gi.G2API_GiveMeVectorFromMatrix(boltMatrix, (Eorientations)rtAxis, axis_[1]);//right
-			gi.G2API_GiveMeVectorFromMatrix(boltMatrix, (Eorientations)upAxis, axis_[2]);//up
+			//hmm, just fall back to the most basic tag (this will also make it work with pre-JKA saber models
+			bolt = gi.G2API_AddBolt(&scent->gent->ghoul2[modelIndex], "*flash");
+			if (bolt == -1)
+			{//no tag_flash either?!!
+				bolt = 0;
+			}
 		}
-		else
-		*/
+
+		//if there is an effect on this blade, play it
+		if (!WP_SaberBladeUseSecondBladeStyle(&cent->gent->client->ps.saber[saberNum], bladeNum)
+			&& cent->gent->client->ps.saber[saberNum].bladeEffect)
 		{
-			// figure out where the actual model muzzle is
-
-			//old way - only 1 tag ever in a saber:
-			//gi.G2API_GetBoltMatrix(scent->gent->ghoul2, modelIndex, 0, &boltMatrix, angles, origin, cg.time, cgs.model_draw, scent->currentState.modelScale);
-
-			//New way, multiple blade tags:
-			char *tagName = va( "*blade%d", bladeNum+1 );
-			bolt = gi.G2API_AddBolt( &scent->gent->ghoul2[modelIndex], tagName );
-
-			if ( bolt == -1 )
-			{
-				tagHack = qtrue;//use the hacked switch statement below to position and orient the blades
-				//hmm, just fall back to the most basic tag (this will also make it work with pre-JKA saber models
-				bolt = gi.G2API_AddBolt( &scent->gent->ghoul2[modelIndex], "*flash" );
-				if ( bolt == -1 )
-				{//no tag_flash either?!!
-					bolt = 0;
-				}
-			}
-
-			//if there is an effect on this blade, play it
-			if (  !WP_SaberBladeUseSecondBladeStyle( &cent->gent->client->ps.saber[saberNum], bladeNum )
-					&& cent->gent->client->ps.saber[saberNum].bladeEffect )
-			{
-				CG_PlayEffectIDBolted( cent->gent->client->ps.saber[saberNum].bladeEffect, modelIndex, bolt, scent->currentState.clientNum, scent->lerpOrigin, -1, qfalse );
-			}
-			else if ( WP_SaberBladeUseSecondBladeStyle( &cent->gent->client->ps.saber[saberNum], bladeNum )
-					&& cent->gent->client->ps.saber[saberNum].bladeEffect2 )
-			{
-				CG_PlayEffectIDBolted( cent->gent->client->ps.saber[saberNum].bladeEffect2, modelIndex, bolt, scent->currentState.clientNum, scent->lerpOrigin, -1, qfalse );
-			}
-			//get the boltMatrix
-			gi.G2API_GetBoltMatrix(scent->gent->ghoul2, modelIndex, bolt, &boltMatrix, angles, origin, cg.time, cgs.model_draw, scent->currentState.modelScale);
-
-			// work the matrix axis stuff into the original axis and origins used.
-			gi.G2API_GiveMeVectorFromMatrix(boltMatrix, ORIGIN, org_);
-			gi.G2API_GiveMeVectorFromMatrix(boltMatrix, NEGATIVE_X, axis_[0]);//front (was NEGATIVE_Y, but the md3->glm exporter screws up this tag somethin' awful)
-			gi.G2API_GiveMeVectorFromMatrix(boltMatrix, NEGATIVE_Y, axis_[1]);//right
-			gi.G2API_GiveMeVectorFromMatrix(boltMatrix, POSITIVE_Z, axis_[2]);//up
+			CG_PlayEffectIDBolted(cent->gent->client->ps.saber[saberNum].bladeEffect, modelIndex, bolt, scent->currentState.clientNum, scent->lerpOrigin, -1, qfalse);
 		}
-
-		//Now figure out where this info will be next frame
-		/*
+		else if (WP_SaberBladeUseSecondBladeStyle(&cent->gent->client->ps.saber[saberNum], bladeNum)
+			&& cent->gent->client->ps.saber[saberNum].bladeEffect2)
 		{
-			vec3_t	futureOrigin, futureAngles, orgDiff, angDiff;
-			int futuretime;
-
-			//futuretime = (int)((cg.time + 99)/50) * 50;
-			futuretime = cg.time+100;
-
-			VectorCopy( angles, futureAngles );
-			VectorCopy( origin, futureOrigin );
-
-			//note: for a thrown saber, this does nothing, really
-			if ( cent->gent )
-			{
-				VectorSubtract( cent->lerpOrigin, cent->gent->lastOrigin, orgDiff );
-				VectorSubtract( cent->lerpAngles, cent->gent->lastAngles, angDiff );
-				VectorAdd( futureOrigin, orgDiff, futureOrigin );
-				for ( int i = 0; i < 3; i++ )
-				{
-					futureAngles[i] = AngleNormalize360( futureAngles[i]+angDiff[i] );
-				}
-			}
-
-			// figure out where the actual model muzzle will be after next server frame.
-			gi.G2API_GetBoltMatrix(scent->gent->ghoul2, modelIndex, 0, &boltMatrix, futureAngles, futureOrigin, futuretime, cgs.model_draw, scent->currentState.modelScale);
-			// work the matrix axis stuff into the original axis and origins used.
-			gi.G2API_GiveMeVectorFromMatrix(boltMatrix, ORIGIN, org_future);
-			gi.G2API_GiveMeVectorFromMatrix(boltMatrix, NEGATIVE_X, axis_future[0]);//was NEGATIVE_Y, but the md3->glm exporter screws up this tag somethin' awful
+			CG_PlayEffectIDBolted(cent->gent->client->ps.saber[saberNum].bladeEffect2, modelIndex, bolt, scent->currentState.clientNum, scent->lerpOrigin, -1, qfalse);
 		}
-		*/
+		//get the boltMatrix
+		gi.G2API_GetBoltMatrix(scent->gent->ghoul2, modelIndex, bolt, &boltMatrix, angles, origin, cg.time, cgs.model_draw, scent->currentState.modelScale);
+
+		// work the matrix axis stuff into the original axis and origins used.
+		gi.G2API_GiveMeVectorFromMatrix(boltMatrix, ORIGIN, org_);
+		gi.G2API_GiveMeVectorFromMatrix(boltMatrix, NEGATIVE_X, axis_[0]);//front (was NEGATIVE_Y, but the md3->glm exporter screws up this tag somethin' awful)
+		gi.G2API_GiveMeVectorFromMatrix(boltMatrix, NEGATIVE_Y, axis_[1]);//right
+		gi.G2API_GiveMeVectorFromMatrix(boltMatrix, POSITIVE_Z, axis_[2]);//up
 	}
 	else
 	{
-		CG_GetTagWorldPosition( saber, "*flash", org_, axis_ );
+		CG_GetTagWorldPosition(saber, "*flash", org_, axis_);
 	}
 
-/*
-Ghoul2 Insert End
-*/
-
-//====FIXMEFIXMEFIXMEFIXMEFIXME========================================================
-//FIXME: temp hack until we have a tag_flash2 for the second (3rd? 4th?) blade
-	//FIXME: maybe fall back on this if the saber model has only 1 tag_flash?
-	//			or, better yet, if the saber info doesn't list tagnames for the blades?
-	if ( tagHack )
+	if (tagHack)
 	{
-		switch ( cent->gent->client->ps.saber[saberNum].type )
+		switch (cent->gent->client->ps.saber[saberNum].type)
 		{
 		case SABER_SINGLE:
 		case SABER_DAGGER:
@@ -9124,187 +9063,144 @@ Ghoul2 Insert End
 		case SABER_GRIE:
 			break;
 		case SABER_STAFF:
-			if ( bladeNum == 1 )
+			if (bladeNum == 1)
 			{
-				VectorScale( axis_[0], -1, axis_[0] );
-				VectorMA( org_, 16, axis_[0], org_ );
+				VectorScale(axis_[0], -1, axis_[0]);
+				VectorMA(org_, 16, axis_[0], org_);
 			}
 			break;
 		case SABER_BROAD:
-			if ( bladeNum == 0 )
+			if (bladeNum == 0)
 			{
-				VectorMA( org_, -1, axis_[1], org_ );
+				VectorMA(org_, -1, axis_[1], org_);
 			}
-			else if ( bladeNum == 1 )
+			else if (bladeNum == 1)
 			{
-				VectorMA( org_, 1, axis_[1], org_ );
+				VectorMA(org_, 1, axis_[1], org_);
 			}
 			break;
 		case SABER_PRONG:
-			if ( bladeNum == 0 )
+			if (bladeNum == 0)
 			{
-				VectorMA( org_, -3, axis_[1], org_ );
+				VectorMA(org_, -3, axis_[1], org_);
 			}
-			else if ( bladeNum == 1 )
+			else if (bladeNum == 1)
 			{
-				VectorMA( org_, 3, axis_[1], org_ );
+				VectorMA(org_, 3, axis_[1], org_);
 			}
 			break;
 		case SABER_ARC:
-			VectorSubtract( axis_[1], axis_[2], axis_[1] );
-			VectorNormalizeFast( axis_[1] );
-			switch ( bladeNum )
+			VectorSubtract(axis_[1], axis_[2], axis_[1]);
+			VectorNormalizeFast(axis_[1]);
+			switch (bladeNum)
 			{
 			case 0:
-				VectorMA( org_, 8, axis_[0], org_ );
-				VectorScale( axis_[0], 0.75f, axis_[0] );
-				VectorScale( axis_[1], 0.25f, axis_[1] );
-				VectorAdd( axis_[0], axis_[1], axis_[0] );
-				//VectorNormalize( axis_[0] );
+				VectorMA(org_, 8, axis_[0], org_);
+				VectorScale(axis_[0], 0.75f, axis_[0]);
+				VectorScale(axis_[1], 0.25f, axis_[1]);
+				VectorAdd(axis_[0], axis_[1], axis_[0]);
 				break;
 			case 1:
-				//VectorMA( org_, 0, axis_[0], org_ );
-				VectorScale( axis_[0], 0.25f, axis_[0] );
-				VectorScale( axis_[1], 0.75f, axis_[1] );
-				VectorAdd( axis_[0], axis_[1], axis_[0] );
-				//VectorNormalize( axis_[0] );
+				VectorScale(axis_[0], 0.25f, axis_[0]);
+				VectorScale(axis_[1], 0.75f, axis_[1]);
+				VectorAdd(axis_[0], axis_[1], axis_[0]);
 				break;
 			case 2:
-				VectorMA( org_, -8, axis_[0], org_ );
-				VectorScale( axis_[0], -0.25f, axis_[0] );
-				VectorScale( axis_[1], 0.75f, axis_[1] );
-				VectorAdd( axis_[0], axis_[1], axis_[0] );
-				//VectorNormalize( axis_[0] );
+				VectorMA(org_, -8, axis_[0], org_);
+				VectorScale(axis_[0], -0.25f, axis_[0]);
+				VectorScale(axis_[1], 0.75f, axis_[1]);
+				VectorAdd(axis_[0], axis_[1], axis_[0]);
 				break;
 			case 3:
-				VectorMA( org_, -16, axis_[0], org_ );
-				VectorScale( axis_[0], -0.75f, axis_[0] );
-				VectorScale( axis_[1], 0.25f, axis_[1] );
-				VectorAdd( axis_[0], axis_[1], axis_[0] );
-				//VectorNormalize( axis_[0] );
+				VectorMA(org_, -16, axis_[0], org_);
+				VectorScale(axis_[0], -0.75f, axis_[0]);
+				VectorScale(axis_[1], 0.25f, axis_[1]);
+				VectorAdd(axis_[0], axis_[1], axis_[0]);
 				break;
 			}
 			break;
 		case SABER_SAI:
-			if ( bladeNum == 1 )
+			if (bladeNum == 1)
 			{
-				VectorMA( org_, -3, axis_[1], org_ );
+				VectorMA(org_, -3, axis_[1], org_);
 			}
-			else if ( bladeNum == 2 )
+			else if (bladeNum == 2)
 			{
-				VectorMA( org_, 3, axis_[1], org_ );
+				VectorMA(org_, 3, axis_[1], org_);
 			}
 			break;
 		case SABER_CLAW:
-			switch ( bladeNum )
+			switch (bladeNum)
 			{
 			case 0:
-				VectorMA( org_, 2, axis_[0], org_ );
-				VectorMA( org_, 2, axis_[2], org_ );
+				VectorMA(org_, 2, axis_[0], org_);
+				VectorMA(org_, 2, axis_[2], org_);
 				break;
 			case 1:
-				VectorMA( org_, 2, axis_[0], org_ );
-				VectorMA( org_, 2, axis_[2], org_ );
-				VectorMA( org_, 2, axis_[1], org_ );
+				VectorMA(org_, 2, axis_[0], org_);
+				VectorMA(org_, 2, axis_[2], org_);
+				VectorMA(org_, 2, axis_[1], org_);
 				break;
 			case 2:
-				VectorMA( org_, 2, axis_[0], org_ );
-				VectorMA( org_, 2, axis_[2], org_ );
-				VectorMA( org_, -2, axis_[1], org_ );
+				VectorMA(org_, 2, axis_[0], org_);
+				VectorMA(org_, 2, axis_[2], org_);
+				VectorMA(org_, -2, axis_[1], org_);
 				break;
 			}
-			/*
-			if ( bladeNum == 1 )
-			{
-				VectorMA( org_, -2, axis_[1], org_ );
-			}
-			else if ( bladeNum == 2 )
-			{
-				VectorMA( org_, 2, axis_[1], org_ );
-			}
-			*/
 			break;
 		case SABER_STAR:
-			/*
-			if ( saber )
-			{
-				VectorCopy( saber->origin, org_ );
-			}
-			else
-			{
-				bolt = cent->gent->handRBolt;
-				if ( saberNum == 1 )
-				{
-					bolt = cent->gent->handLBolt;
-				}
-				// figure out where the actual model muzzle is
-				gi.G2API_GetBoltMatrix( cent->gent->ghoul2, cent->gent->playerModel, bolt, &boltMatrix, angles, origin, cg.time, cgs.model_draw, cent->currentState.modelScale );
-				// work the matrix axis stuff into the original axis and origins used.
-				gi.G2API_GiveMeVectorFromMatrix(boltMatrix, ORIGIN, org_);
-			}
-			*/
-			/*
-			if ( cent->currentState.clientNum && cent->gent->client->ps.saberInFlight )
-			{//WTF?  For some reason, sabers thrown by NPCs are 90 degrees off on roll
-				VectorCopy( axis_[1], axis_[2] );
-			}
-			*/
-			switch ( bladeNum )
+			switch (bladeNum)
 			{
 			case 0:
-				VectorMA( org_, 8, axis_[0], org_ );
+				VectorMA(org_, 8, axis_[0], org_);
 				break;
 			case 1:
-				VectorScale( axis_[0], 0.33f, axis_[0] );
-				VectorScale( axis_[2], 0.67f, axis_[2] );
-				VectorAdd( axis_[0], axis_[2], axis_[0] );
-				//VectorNormalize( axis_[0] );
-				VectorMA( org_, 8, axis_[0], org_ );
+				VectorScale(axis_[0], 0.33f, axis_[0]);
+				VectorScale(axis_[2], 0.67f, axis_[2]);
+				VectorAdd(axis_[0], axis_[2], axis_[0]);
+				VectorMA(org_, 8, axis_[0], org_);
 				break;
 			case 2:
-				VectorScale( axis_[0], -0.33f, axis_[0] );
-				VectorScale( axis_[2], 0.67f, axis_[2] );
-				VectorAdd( axis_[0], axis_[2], axis_[0] );
-				//VectorNormalize( axis_[0] );
-				VectorMA( org_, 8, axis_[0], org_ );
+				VectorScale(axis_[0], -0.33f, axis_[0]);
+				VectorScale(axis_[2], 0.67f, axis_[2]);
+				VectorAdd(axis_[0], axis_[2], axis_[0]);
+				VectorMA(org_, 8, axis_[0], org_);
 				break;
 			case 3:
-				VectorScale( axis_[0], -1, axis_[0] );
-				VectorMA( org_, 8, axis_[0], org_ );
+				VectorScale(axis_[0], -1, axis_[0]);
+				VectorMA(org_, 8, axis_[0], org_);
 				break;
 			case 4:
-				VectorScale( axis_[0], -0.33f, axis_[0] );
-				VectorScale( axis_[2], -0.67f, axis_[2] );
-				VectorAdd( axis_[0], axis_[2], axis_[0] );
-				//VectorNormalize( axis_[0] );
-				VectorMA( org_, 8, axis_[0], org_ );
+				VectorScale(axis_[0], -0.33f, axis_[0]);
+				VectorScale(axis_[2], -0.67f, axis_[2]);
+				VectorAdd(axis_[0], axis_[2], axis_[0]);
+				VectorMA(org_, 8, axis_[0], org_);
 				break;
 			case 5:
-				VectorScale( axis_[0], 0.33f, axis_[0] );
-				VectorScale( axis_[2], -0.67f, axis_[2] );
-				VectorAdd( axis_[0], axis_[2], axis_[0] );
-				//VectorNormalize( axis_[0] );
-				VectorMA( org_, 8, axis_[0], org_ );
+				VectorScale(axis_[0], 0.33f, axis_[0]);
+				VectorScale(axis_[2], -0.67f, axis_[2]);
+				VectorAdd(axis_[0], axis_[2], axis_[0]);
+				VectorMA(org_, 8, axis_[0], org_);
 				break;
 			}
 			break;
 		case SABER_TRIDENT:
-			switch ( bladeNum )
+			switch (bladeNum)
 			{
 			case 0:
-				VectorMA( org_, 24, axis_[0], org_ );
+				VectorMA(org_, 24, axis_[0], org_);
 				break;
 			case 1:
-				VectorMA( org_, -6, axis_[1], org_ );
-				VectorMA( org_, 24, axis_[0], org_ );
+				VectorMA(org_, -6, axis_[1], org_);
+				VectorMA(org_, 24, axis_[0], org_);
 				break;
 			case 2:
-				VectorMA( org_, 6, axis_[1], org_ );
-				VectorMA( org_, 24, axis_[0], org_ );
+				VectorMA(org_, 6, axis_[1], org_);
+				VectorMA(org_, 24, axis_[0], org_);
 				break;
 			case 3:
-				VectorMA( org_, -32, axis_[0], org_ );
-				VectorScale( axis_[0], -1, axis_[0] );
+				VectorMA(org_, -32, axis_[0], org_);
+				VectorScale(axis_[0], -1, axis_[0]);
 				break;
 			}
 			break;
@@ -9315,21 +9211,22 @@ Ghoul2 Insert End
 			break;
 		}
 	}
-//====FIXMEFIXMEFIXMEFIXMEFIXME========================================================
 
 	//store where saber is this frame
-	VectorCopy( org_, cent->gent->client->ps.saber[saberNum].blade[bladeNum].muzzlePoint );
-	VectorCopy( axis_[0], cent->gent->client->ps.saber[saberNum].blade[bladeNum].muzzleDir );
-	if ( saberNum == 0 && bladeNum == 0 )
+	VectorCopy(org_, cent->gent->client->ps.saber[saberNum].blade[bladeNum].muzzlePoint);
+	VectorCopy(axis_[0], cent->gent->client->ps.saber[saberNum].blade[bladeNum].muzzleDir);
+	
+	if (saberNum == 0 && bladeNum == 0)
 	{
-		VectorCopy( org_, cent->gent->client->renderInfo.muzzlePoint );
-		VectorCopy( axis_[0], cent->gent->client->renderInfo.muzzleDir );
+		VectorCopy(org_, cent->gent->client->renderInfo.muzzlePoint);
+		VectorCopy(axis_[0], cent->gent->client->renderInfo.muzzleDir);
 		cent->gent->client->renderInfo.mPCalcTime = cg.time;
 	}
+	
 	//length for purposes of rendering and marks trace will be longer than blade so we don't damage past a wall's surface
-	if ( cent->gent->client->ps.saber[saberNum].blade[bladeNum].length < cent->gent->client->ps.saber[saberNum].blade[bladeNum].lengthMax )
+	if (cent->gent->client->ps.saber[saberNum].blade[bladeNum].length < cent->gent->client->ps.saber[saberNum].blade[bladeNum].lengthMax)
 	{
-		if ( cent->gent->client->ps.saber[saberNum].blade[bladeNum].length < cent->gent->client->ps.saber[saberNum].blade[bladeNum].lengthMax - 8 )
+		if (cent->gent->client->ps.saber[saberNum].blade[bladeNum].length < cent->gent->client->ps.saber[saberNum].blade[bladeNum].lengthMax - 8)
 		{
 			length = cent->gent->client->ps.saber[saberNum].blade[bladeNum].length + 8;
 		}
@@ -9342,40 +9239,35 @@ Ghoul2 Insert End
 	{
 		length = cent->gent->client->ps.saber[saberNum].blade[bladeNum].length;
 	}
-	VectorMA( org_, length, axis_[0], end );
+	VectorMA(org_, length, axis_[0], end);
 
-	// Now store where the saber will be after next frame.
-	//VectorCopy(org_future, cent->gent->client->renderInfo.muzzlePointNext);
-	//VectorCopy(axis_future[0], cent->gent->client->renderInfo.muzzleDirNext);
-
-	VectorAdd( end, axis_[0], end );
+	VectorAdd(end, axis_[0], end);
 
 	// If the saber is in flight we shouldn't trace from the player to the muzzle point
-	if ( cent->gent->client->ps.saberInFlight && saberNum == 0 )
+	if (cent->gent->client->ps.saberInFlight && saberNum == 0)
 	{
 		trace.fraction = 1.0f;
 	}
 	else
 	{
 		vec3_t rootOrigin;
-		if (cent->gent->rootBone>=0 && cent->gent->ghoul2.IsValid() && cent->gent->ghoul2[0].animModelIndexOffset)//If it has an animOffset it's a cinematic anim
+		if (cent->gent->rootBone >= 0 && cent->gent->ghoul2.IsValid() && cent->gent->ghoul2[0].animModelIndexOffset)//If it has an animOffset it's a cinematic anim
 		{	//i might be running out of my bounding box, so get my root origin
 			mdxaBone_t	boltMatrix;
-			gi.G2API_GetBoltMatrix( cent->gent->ghoul2, cent->gent->playerModel, cent->gent->rootBone,
-					&boltMatrix, angles, cent->lerpOrigin,
-					cg.time, cgs.model_draw, cent->currentState.modelScale);
-			gi.G2API_GiveMeVectorFromMatrix( boltMatrix, ORIGIN, rootOrigin );
+			gi.G2API_GetBoltMatrix(cent->gent->ghoul2, cent->gent->playerModel, cent->gent->rootBone,
+				&boltMatrix, angles, cent->lerpOrigin,
+				cg.time, cgs.model_draw, cent->currentState.modelScale);
+			gi.G2API_GiveMeVectorFromMatrix(boltMatrix, ORIGIN, rootOrigin);
 		}
 		else
 		{
-			VectorCopy( cent->lerpOrigin, rootOrigin );
+			VectorCopy(cent->lerpOrigin, rootOrigin);
 		}
-		gi.trace( &trace, rootOrigin, NULL, NULL, cent->gent->client->ps.saber[saberNum].blade[bladeNum].muzzlePoint, cent->currentState.number, CONTENTS_SOLID, (EG2_Collision)0, 0 );
+		gi.trace(&trace, rootOrigin, NULL, NULL, cent->gent->client->ps.saber[saberNum].blade[bladeNum].muzzlePoint, cent->currentState.number, CONTENTS_SOLID, (EG2_Collision)0, 0);
 	}
 
-	if ( trace.fraction < 1.0f )
-	{
-		// Saber is on the other side of a wall
+	if (trace.fraction < 1.0f)
+	{// Saber is on the other side of a wall
 		cent->gent->client->ps.saber[saberNum].blade[bladeNum].length = 0.1f;
 		cent->gent->client->ps.saberEventFlags &= ~SEF_INWATER;
 	}
@@ -9385,115 +9277,105 @@ Ghoul2 Insert End
 		int traceMask = MASK_SOLID;
 		qboolean noMarks = qfalse;
 
-		if (   (!WP_SaberBladeUseSecondBladeStyle( &cent->gent->client->ps.saber[saberNum], bladeNum )
-				&& (cent->gent->client->ps.saber[saberNum].saberFlags2&SFL2_NO_IDLE_EFFECT) )
-			|| ( WP_SaberBladeUseSecondBladeStyle( &cent->gent->client->ps.saber[saberNum], bladeNum )
-				&& (cent->gent->client->ps.saber[saberNum].saberFlags2&SFL2_NO_IDLE_EFFECT2) )
-		   )
+		if ((!WP_SaberBladeUseSecondBladeStyle(&cent->gent->client->ps.saber[saberNum], bladeNum)
+			&& (cent->gent->client->ps.saber[saberNum].saberFlags2&SFL2_NO_IDLE_EFFECT))
+			|| (WP_SaberBladeUseSecondBladeStyle(&cent->gent->client->ps.saber[saberNum], bladeNum)
+				&& (cent->gent->client->ps.saber[saberNum].saberFlags2&SFL2_NO_IDLE_EFFECT2)))
 		{//do no effects when idle
-			if ( !cent->gent->client->ps.saberInFlight
-				&& !PM_SaberInAttack( cent->gent->client->ps.saberMove )
-				&& !PM_SaberInTransitionAny( cent->gent->client->ps.saberMove )
-				&& !PM_SaberInSpecialAttack( cent->gent->client->ps.torsoAnim ) )
+			if (!cent->gent->client->ps.saberInFlight
+				&& !PM_SaberInAttack(cent->gent->client->ps.saberMove)
+				&& !PM_SaberInTransitionAny(cent->gent->client->ps.saberMove)
+				&& !PM_SaberInSpecialAttack(cent->gent->client->ps.torsoAnim))
 			{//idle, do no marks
 				noMarks = qtrue;
 			}
 		}
-		if ( cg_saberEntMarks.integer )
+		if (cg_saberEntMarks.integer)
 		{
-			if ( cent->gent->client->ps.saberInFlight
-				|| PM_SaberInAttack( cent->gent->client->ps.saberMove )
-				//|| PM_SaberInTransitionAny( cent->gent->client->ps.saberMove )
-				|| PM_SaberInSpecialAttack( cent->gent->client->ps.torsoAnim ) )
+			if (cent->gent->client->ps.saberInFlight
+				|| PM_SaberInAttack(cent->gent->client->ps.saberMove)
+				|| PM_SaberInSpecialAttack(cent->gent->client->ps.torsoAnim))
 			{
-				traceMask |= (CONTENTS_BODY|CONTENTS_CORPSE);
+				traceMask |= (CONTENTS_BODY | CONTENTS_CORPSE);
 			}
 		}
 
-		for ( int i = 0; i < 1; i++ )//was 2 because it would go through architecture and leave saber trails on either side of the brush - but still looks bad if we hit a corner, blade is still 8 longer than hit
+		for (int i = 0; i < 1; i++)//was 2 because it would go through architecture and leave saber trails on either side of the brush - but still looks bad if we hit a corner, blade is still 8 longer than hit
 		{
-			if ( i )
+			if (i)
 			{//tracing from end to base
-				gi.trace( &trace, end, NULL, NULL, org_, cent->currentState.clientNum, traceMask, (EG2_Collision)0, 0 );
+				gi.trace(&trace, end, NULL, NULL, org_, cent->currentState.clientNum, traceMask, (EG2_Collision)0, 0);
 			}
 			else
 			{//tracing from base to end
-				gi.trace( &trace, org_, NULL, NULL, end, cent->currentState.clientNum, traceMask|CONTENTS_WATER|CONTENTS_SLIME, (EG2_Collision)0, 0 );
+				gi.trace(&trace, org_, NULL, NULL, end, cent->currentState.clientNum, traceMask | CONTENTS_WATER | CONTENTS_SLIME, (EG2_Collision)0, 0);
 			}
 
-			if ( trace.fraction < 1.0f )
+			if (trace.fraction < 1.0f)
 			{
-				if ( (trace.contents&CONTENTS_WATER) || (trace.contents&CONTENTS_SLIME) )
+				if ((trace.contents&CONTENTS_WATER) || (trace.contents&CONTENTS_SLIME))
 				{
-					if ( !noMarks )
+					if (!noMarks)
 					{
-						/*
-						if ( !(cent->gent->client->ps.saberEventFlags&SEF_INWATER) )
-						{
-						}
-						*/
-						if ( !Q_irand( 0, 10 ) )
+						if (!Q_irand(0, 10))
 						{//FIXME: don't do this this way.... :)
 							vec3_t	spot;
-							VectorCopy( trace.endpos, spot );
+							VectorCopy(trace.endpos, spot);
 							spot[2] += 4;
-							if ( Q_irand( 1, client->ps.saber[saberNum].numBlades ) == 1 )
+							if (Q_irand(1, client->ps.saber[saberNum].numBlades) == 1)
 							{
-								theFxScheduler.PlayEffect( "saber/boil", spot );
-								cgi_S_StartSound ( spot, -1, CHAN_AUTO, cgi_S_RegisterSound( "sound/weapons/saber/hitwater.wav" ) );
+								theFxScheduler.PlayEffect("saber/boil", spot);
+								cgi_S_StartSound(spot, -1, CHAN_AUTO, cgi_S_RegisterSound("sound/weapons/saber/hitwater.wav"));
 							}
 						}
-						//cent->gent->client->ps.saberEventFlags |= SEF_INWATER;
-						//don't do other trace
 					}
 					i = 1;
 				}
 				else
 				{
-					if ( !noMarks )
+					if (!noMarks)
 					{
-						if ( ( !WP_SaberBladeUseSecondBladeStyle( &client->ps.saber[saberNum], bladeNum ) && !(client->ps.saber[saberNum].saberFlags2&SFL2_NO_WALL_MARKS) )
-							|| ( WP_SaberBladeUseSecondBladeStyle( &client->ps.saber[saberNum], bladeNum ) && !(client->ps.saber[saberNum].saberFlags2&SFL2_NO_WALL_MARKS2) ) )
+						if ((!WP_SaberBladeUseSecondBladeStyle(&client->ps.saber[saberNum], bladeNum) && !(client->ps.saber[saberNum].saberFlags2&SFL2_NO_WALL_MARKS))
+							|| (WP_SaberBladeUseSecondBladeStyle(&client->ps.saber[saberNum], bladeNum) && !(client->ps.saber[saberNum].saberFlags2&SFL2_NO_WALL_MARKS2)))
 						{
-							if ( !(trace.surfaceFlags & SURF_NOIMPACT) // never spark on sky
+							if (!(trace.surfaceFlags & SURF_NOIMPACT) // never spark on sky
 								&& (trace.entityNum == ENTITYNUM_WORLD || cg_entities[trace.entityNum].currentState.solid == SOLID_BMODEL)
-								&& Q_irand( 1, client->ps.saber[saberNum].numBlades ) == 1 )
+								&& Q_irand(1, client->ps.saber[saberNum].numBlades) == 1)
 							{
-								//was "sparks/spark"
-								theFxScheduler.PlayEffect( "sparks/spark_nosnd", trace.endpos, trace.plane.normal );
+								theFxScheduler.PlayEffect("sparks/spark_nosnd", trace.endpos, trace.plane.normal);
 							}
 						}
 						// All I need is a bool to mark whether I have a previous point to work with.
 						//....come up with something better..
-						if ( client->ps.saber[saberNum].blade[bladeNum].trail.haveOldPos[i] )
+						if (client->ps.saber[saberNum].blade[bladeNum].trail.haveOldPos[i])
 						{
-							if ( trace.entityNum == ENTITYNUM_WORLD || (cg_entities[trace.entityNum].currentState.eFlags & EF_PERMANENT) || cg_entities[trace.entityNum].currentState.eType == ET_TERRAIN )
+							if (trace.entityNum == ENTITYNUM_WORLD || (cg_entities[trace.entityNum].currentState.eFlags & EF_PERMANENT) || cg_entities[trace.entityNum].currentState.eType == ET_TERRAIN)
 							{//only put marks on architecture
-								if ( (!WP_SaberBladeUseSecondBladeStyle( &client->ps.saber[saberNum], bladeNum ) && !(client->ps.saber[saberNum].saberFlags2&SFL2_NO_WALL_MARKS))
-									|| (WP_SaberBladeUseSecondBladeStyle( &client->ps.saber[saberNum], bladeNum ) && !(client->ps.saber[saberNum].saberFlags2&SFL2_NO_WALL_MARKS2)) )
+								if ((!WP_SaberBladeUseSecondBladeStyle(&client->ps.saber[saberNum], bladeNum) && !(client->ps.saber[saberNum].saberFlags2&SFL2_NO_WALL_MARKS))
+									|| (WP_SaberBladeUseSecondBladeStyle(&client->ps.saber[saberNum], bladeNum) && !(client->ps.saber[saberNum].saberFlags2&SFL2_NO_WALL_MARKS2)))
 								{
 									// Let's do some cool burn/glowing mark bits!!!
-									CG_CreateSaberMarks( client->ps.saber[saberNum].blade[bladeNum].trail.oldPos[i], trace.endpos, trace.plane.normal );
+									CG_CreateSaberMarks(client->ps.saber[saberNum].blade[bladeNum].trail.oldPos[i], trace.endpos, trace.plane.normal);
 
-									if ( Q_irand( 1, client->ps.saber[saberNum].numBlades ) == 1 )
+									if (Q_irand(1, client->ps.saber[saberNum].numBlades) == 1)
 									{
 										//make a sound
-										if ( cg.time - cent->gent->client->ps.saberHitWallSoundDebounceTime >= 100 )
+										if (cg.time - cent->gent->client->ps.saberHitWallSoundDebounceTime >= 100)
 										{//ugh, need to have a real sound debouncer... or do this game-side
 											cent->gent->client->ps.saberHitWallSoundDebounceTime = cg.time;
-											cgi_S_StartSound ( cent->lerpOrigin, cent->currentState.clientNum, CHAN_ITEM, cgi_S_RegisterSound( va ( "sound/weapons/saber/saberhitwall%d.wav", Q_irand( 1, 3 ) ) ) );
+											cgi_S_StartSound(cent->lerpOrigin, cent->currentState.clientNum, CHAN_ITEM, cgi_S_RegisterSound(va("sound/weapons/saber/saberhitwall%d.wav", Q_irand(1, 3))));
 										}
 									}
 								}
 							}
-							else if ( !i )
+							else if (!i)
 							{//can put marks on G2 clients (but only on base to tip trace)
 								gentity_t *hitEnt = &g_entities[trace.entityNum];
 								vec3_t uaxis, splashBackDir;
 								VectorSubtract(client->ps.saber[saberNum].blade[bladeNum].trail.oldPos[i], trace.endpos, uaxis);
-								VectorScale( axis_[0], -1, splashBackDir );
+								VectorScale(axis_[0], -1, splashBackDir);
 								//FIXME: if not hitting the first model on the enemy, don't do this!
-								CG_SaberDoWeaponHitMarks( client, (scent!=NULL?scent->gent:NULL), hitEnt, saberNum, bladeNum, trace.endpos, axis_[0], uaxis, splashBackDir, 0.25f );
+								CG_SaberDoWeaponHitMarks(client, (scent != NULL ? scent->gent : NULL), hitEnt, saberNum, bladeNum, trace.endpos, axis_[0], uaxis, splashBackDir, 0.25f);
 							}
 						}
 						else
@@ -9505,34 +9387,29 @@ Ghoul2 Insert End
 				}
 
 				// stash point so we can connect-the-dots later
-				VectorCopy( trace.endpos, client->ps.saber[saberNum].blade[bladeNum].trail.oldPos[i] );
-				VectorCopy( trace.plane.normal, client->ps.saber[saberNum].blade[bladeNum].trail.oldNormal[i] );
+				VectorCopy(trace.endpos, client->ps.saber[saberNum].blade[bladeNum].trail.oldPos[i]);
+				VectorCopy(trace.plane.normal, client->ps.saber[saberNum].blade[bladeNum].trail.oldNormal[i]);
 
-				if ( !i && trace.contents&(CONTENTS_SOLID|CONTENTS_TERRAIN|CONTENTS_SHOTCLIP) )
+				if (!i && trace.contents&(CONTENTS_SOLID | CONTENTS_TERRAIN | CONTENTS_SHOTCLIP))
 				{	//Now that we don't let the blade go through walls, we need to shorten the blade when it hits one
 					cent->gent->client->ps.saber[saberNum].blade[bladeNum].length = cent->gent->client->ps.saber[saberNum].blade[bladeNum].length * trace.fraction;//this will stop damage from going through walls
-					if ( cent->gent->client->ps.saber[saberNum].blade[bladeNum].length <= 0.1f )
+					if (cent->gent->client->ps.saber[saberNum].blade[bladeNum].length <= 0.1f)
 					{//SIGH... hack so it doesn't play the saber turn-on sound that plays when you first turn the saber on (assumed when saber is active but length is zero)
 						cent->gent->client->ps.saber[saberNum].blade[bladeNum].length = 0.1f;//FIXME: may go through walls still??
 					}
-					//FIXME: should probably re-extend instantly, not use the "turning-on" growth rate
 				}
 			}
 			else
 			{
 				cent->gent->client->ps.saberEventFlags &= ~SEF_INWATER;
-				if ( client->ps.saber[saberNum].blade[bladeNum].trail.haveOldPos[i] )
+				if (client->ps.saber[saberNum].blade[bladeNum].trail.haveOldPos[i])
 				{
-					if ( !noMarks )
+					if (!noMarks)
 					{
-						if ( (!WP_SaberBladeUseSecondBladeStyle( &client->ps.saber[saberNum], bladeNum ) && !(client->ps.saber[saberNum].saberFlags2&SFL2_NO_WALL_MARKS))
-							|| (WP_SaberBladeUseSecondBladeStyle( &client->ps.saber[saberNum], bladeNum ) && !(client->ps.saber[saberNum].saberFlags2&SFL2_NO_WALL_MARKS2)) )
+						if ((!WP_SaberBladeUseSecondBladeStyle(&client->ps.saber[saberNum], bladeNum) && !(client->ps.saber[saberNum].saberFlags2&SFL2_NO_WALL_MARKS))
+							|| (WP_SaberBladeUseSecondBladeStyle(&client->ps.saber[saberNum], bladeNum) && !(client->ps.saber[saberNum].saberFlags2&SFL2_NO_WALL_MARKS2)))
 						{
-							// Hmmm, no impact this frame, but we have an old point
-							// Let's put the mark there, we should use an endcap mark to close the line, but we
-							//	can probably just get away with a round mark
-							//CG_ImpactMark( cgs.media.rivetMarkShader, client->ps.saber[saberNum].blade[bladeNum].trail.oldPos[i], client->ps.saber[saberNum].blade[bladeNum].trail.oldNormal[i],
-							//		0.0f, 1.0f, 1.0f, 1.0f, 1.0f, qfalse, 1.1f, qfalse );
+							// Hmmm, no impact this frame.
 						}
 					}
 				}
@@ -9543,327 +9420,321 @@ Ghoul2 Insert End
 		}
 	}
 
-	// Added 10/02/02 by Aurelio Reis.
-	// If the Blade is not active, leave here; we do not Render it!
-/*	if ( cent->gent->client->ps.saber[saberNum].type == SABER_SITH_SWORD )
-	{//draws no blade or trail
-		//FIXME: draw some sort of energy halo and motion trail!
-		return;
-	}
-*/
-	if ( !client->ps.saber[saberNum].blade[bladeNum].active && client->ps.saber[saberNum].blade[bladeNum].length <= 0 )
+	if (!client->ps.saber[saberNum].blade[bladeNum].active && client->ps.saber[saberNum].blade[bladeNum].length <= 0)
 	{
 		return;
 	}
 
 	qboolean noDlight = qfalse;
-	if ( client->ps.saber[saberNum].numBlades >= 3
-		|| (!WP_SaberBladeUseSecondBladeStyle( &client->ps.saber[saberNum], bladeNum ) && (client->ps.saber[saberNum].saberFlags2&SFL2_NO_DLIGHT) )
-		|| ( WP_SaberBladeUseSecondBladeStyle( &client->ps.saber[saberNum], bladeNum ) && (client->ps.saber[saberNum].saberFlags2&SFL2_NO_DLIGHT2) )
-		)
+	if (client->ps.saber[saberNum].numBlades >= 3
+		|| (!WP_SaberBladeUseSecondBladeStyle(&client->ps.saber[saberNum], bladeNum) && (client->ps.saber[saberNum].saberFlags2&SFL2_NO_DLIGHT))
+		|| (WP_SaberBladeUseSecondBladeStyle(&client->ps.saber[saberNum], bladeNum) && (client->ps.saber[saberNum].saberFlags2&SFL2_NO_DLIGHT2)))
 	{
 		noDlight = qtrue;
 	}
 
-	if (cg_SFXSabers.integer == 0)
-{
-	if ( (!WP_SaberBladeUseSecondBladeStyle( &client->ps.saber[saberNum], bladeNum ) && client->ps.saber[saberNum].trailStyle < 2 )
-		 || ( WP_SaberBladeUseSecondBladeStyle( &client->ps.saber[saberNum], bladeNum ) && client->ps.saber[saberNum].trailStyle2 < 2 ) )
-	{//okay to draw the trail
-		saberTrail_t	*saberTrail = &client->ps.saber[saberNum].blade[bladeNum].trail;
+	if (cg_SFXSabers.integer < 1)
+	{
+		if ((!WP_SaberBladeUseSecondBladeStyle(&client->ps.saber[saberNum], bladeNum) && client->ps.saber[saberNum].trailStyle < 2)
+			|| (WP_SaberBladeUseSecondBladeStyle(&client->ps.saber[saberNum], bladeNum) && client->ps.saber[saberNum].trailStyle2 < 2))
+		{//okay to draw the trail
+			saberTrail_t	*saberTrail = &client->ps.saber[saberNum].blade[bladeNum].trail;
 
-#define SABER_TRAIL_TIME	40.0f
-
-		// if we happen to be timescaled or running in a high framerate situation, we don't want to flood
-		//	the system with very small trail slices...but perhaps doing it by distance would yield better results?
-		if ( saberTrail->lastTime > cg.time )
-		{//after a pause, cg.time jumps ahead in time for one frame
-		//and lastTime gets set to that and will freak out, so, since
-		//it's never valid for saberTrail->lastTime to be > cg.time,
-		//cap it to cg.time here
-			saberTrail->lastTime = cg.time;
-		}
-		if ( cg.time > saberTrail->lastTime + 2  && saberTrail->inAction ) // 2ms
-		{
-			if ( saberTrail->inAction && cg.time < saberTrail->lastTime + 300 ) // if we have a stale segment, don't draw until we have a fresh one
+			// if we happen to be timescaled or running in a high framerate situation, we don't want to flood
+			//	the system with very small trail slices...but perhaps doing it by distance would yield better results?
+			if (saberTrail->lastTime > cg.time)
 			{
-				vec3_t	rgb1={255,255,255};
-
-				if ( cent->gent->client->ps.saber[saberNum].type != SABER_SITH_SWORD
-					&& ( WP_SaberBladeUseSecondBladeStyle( &client->ps.saber[saberNum], bladeNum ) || client->ps.saber[saberNum].trailStyle != 1 )
-					&& ( !WP_SaberBladeUseSecondBladeStyle( &client->ps.saber[saberNum], bladeNum ) || client->ps.saber[saberNum].trailStyle2 != 1 )
-				   )
+				saberTrail->lastTime = cg.time;
+			}
+			if (cg.time > saberTrail->lastTime + 2 && saberTrail->inAction) // 2ms
+			{
+				if (saberTrail->inAction && cg.time < saberTrail->lastTime + 300) // if we have a stale segment, don't draw until we have a fresh one
 				{
-					switch( client->ps.saber[saberNum].blade[bladeNum].color )
+					vec3_t	rgb1 = { 255,255,255 };
+
+					if (cent->gent->client->ps.saber[saberNum].type != SABER_SITH_SWORD
+						&& (WP_SaberBladeUseSecondBladeStyle(&client->ps.saber[saberNum], bladeNum) || client->ps.saber[saberNum].trailStyle != 1)
+						&& (!WP_SaberBladeUseSecondBladeStyle(&client->ps.saber[saberNum], bladeNum) || client->ps.saber[saberNum].trailStyle2 != 1))
 					{
+						switch (client->ps.saber[saberNum].blade[bladeNum].color)
+						{
 						case SABER_RED:
-							VectorSet( rgb1, 255.0f, 0.0f, 0.0f );
+							VectorSet(rgb1, 255.0f, 0.0f, 0.0f);
 							break;
 						case SABER_ORANGE:
-							VectorSet( rgb1, 255.0f, 64.0f, 0.0f );
+							VectorSet(rgb1, 255.0f, 64.0f, 0.0f);
 							break;
 						case SABER_YELLOW:
-							VectorSet( rgb1, 255.0f, 255.0f, 0.0f );
+							VectorSet(rgb1, 255.0f, 255.0f, 0.0f);
 							break;
 						case SABER_GREEN:
-							VectorSet( rgb1, 0.0f, 255.0f, 0.0f );
+							VectorSet(rgb1, 0.0f, 255.0f, 0.0f);
 							break;
 						case SABER_BLUE:
-							VectorSet( rgb1, 0.0f, 64.0f, 255.0f );
+							VectorSet(rgb1, 0.0f, 64.0f, 255.0f);
 							break;
 						case SABER_PURPLE:
-							VectorSet( rgb1, 220.0f, 0.0f, 255.0f );
+							VectorSet(rgb1, 220.0f, 0.0f, 255.0f);
+							break;
+						case SABER_LIME:
+							VectorSet(rgb1, 0.0f, 255.0f, 0.0f);
 							break;
 						case SABER_UNSTABLE_RED:
 							VectorSet(rgb1, 255.0f, 0.0f, 0.0f);
 							break;
 						case SABER_BLACK:
-							VectorSet( rgb1, 255.0f, 255.0f, 255.0f );
+							VectorSet(rgb1, 255.0f, 255.0f, 255.0f);
 							break;
 						case SABER_WHITE:
 							VectorSet(rgb1, 1.0f, 1.0f, 1.0f);
 							break;
 						default://SABER_RGB
-							VectorSet( rgb1, ((client->ps.saber[saberNum].blade[bladeNum].color) & 0xff),
-									  ((client->ps.saber[saberNum].blade[bladeNum].color >> 8) & 0xff),
-									  ((client->ps.saber[saberNum].blade[bladeNum].color >> 16) & 0xff) );
+							VectorSet(rgb1, ((client->ps.saber[saberNum].blade[bladeNum].color) & 0xff),
+								((client->ps.saber[saberNum].blade[bladeNum].color >> 8) & 0xff),
+								((client->ps.saber[saberNum].blade[bladeNum].color >> 16) & 0xff));
 							break;
 
+						}
+					}
+
+					float diff = cg.time - saberTrail->lastTime;
+
+					// I'm not sure that clipping this is really the best idea
+					if (diff <= SABER_TRAIL_TIME * 2)
+					{
+						// build a quad
+						CTrail *fx = new CTrail;
+
+						float duration;
+
+						if (cent->gent->client->ps.saber[saberNum].type == SABER_SITH_SWORD
+							|| (!WP_SaberBladeUseSecondBladeStyle(&client->ps.saber[saberNum], bladeNum) && client->ps.saber[saberNum].trailStyle == 1)
+							|| (WP_SaberBladeUseSecondBladeStyle(&client->ps.saber[saberNum], bladeNum) && client->ps.saber[saberNum].trailStyle2 == 1))
+						{
+							fx->mShader = cgs.media.swordTrailShader;
+							duration = saberTrail->duration / 2.0f; // stay around twice as long
+							VectorSet(rgb1, 32.0f, 32.0f, 32.0f); // make the sith sword trail pretty faint
+						}
+						else if (client->ps.saber[saberNum].blade[bladeNum].color == SABER_BLACK)
+						{
+							fx->mShader = cgs.media.blackSaberBlurShader;
+							duration = saberTrail->duration / 5.0f;
+						}
+						else if (cent->gent->client->ps.saber[saberNum].type == SABER_UNSTABLEBLADE
+							|| cent->gent->client->ps.saber[saberNum].type == SABER_STAFF_UNSTABLE)
+						{
+							fx->mShader = cgs.media.unstableBlurShader;
+							duration = saberTrail->duration / 5.0f;
+						}
+						else
+						{
+							fx->mShader = cgs.media.saberBlurShader;
+							duration = saberTrail->duration / 5.0f;
+						}
+
+						float oldAlpha = 1.0f - (diff / duration);
+
+						// Go from new muzzle to new end...then to old end...back down to old muzzle...finally
+						//	connect back to the new muzzle...this is our trail quad
+						VectorCopy(org_, fx->mVerts[0].origin);
+						VectorMA(end, 3.0f, axis_[0], fx->mVerts[1].origin);
+
+						VectorCopy(saberTrail->tip, fx->mVerts[2].origin);
+						VectorCopy(saberTrail->base, fx->mVerts[3].origin);
+
+						// New muzzle
+						VectorCopy(rgb1, fx->mVerts[0].rgb);
+						fx->mVerts[0].alpha = 255.0f;
+
+						fx->mVerts[0].ST[0] = 0.0f;
+						fx->mVerts[0].ST[1] = 0.99f;
+						fx->mVerts[0].destST[0] = 0.99f;
+						fx->mVerts[0].destST[1] = 0.99f;
+
+						// new tip
+						VectorCopy(rgb1, fx->mVerts[1].rgb);
+						fx->mVerts[1].alpha = 255.0f;
+
+						fx->mVerts[1].ST[0] = 0.0f;
+						fx->mVerts[1].ST[1] = 0.0f;
+						fx->mVerts[1].destST[0] = 0.99f;
+						fx->mVerts[1].destST[1] = 0.0f;
+
+						// old tip
+						VectorCopy(rgb1, fx->mVerts[2].rgb);
+						fx->mVerts[2].alpha = 255.0f;
+
+						fx->mVerts[2].ST[0] = 0.99f - oldAlpha; // NOTE: this just happens to contain the value I want
+						fx->mVerts[2].ST[1] = 0.0f;
+						fx->mVerts[2].destST[0] = 0.99f + fx->mVerts[2].ST[0];
+						fx->mVerts[2].destST[1] = 0.0f;
+
+						// old muzzle
+						VectorCopy(rgb1, fx->mVerts[3].rgb);
+						fx->mVerts[3].alpha = 255.0f;
+
+						fx->mVerts[3].ST[0] = 0.99f - oldAlpha; // NOTE: this just happens to contain the value I want
+						fx->mVerts[3].ST[1] = 0.99f;
+						fx->mVerts[3].destST[0] = 0.99f + fx->mVerts[2].ST[0];
+						fx->mVerts[3].destST[1] = 0.99f;
+
+						FX_AddPrimitive((CEffect**)&fx, duration);
 					}
 				}
 
-				float diff = cg.time - saberTrail->lastTime;
-
-				// I'm not sure that clipping this is really the best idea
-				if ( diff <= SABER_TRAIL_TIME * 2 )
-				{
-					// build a quad
-					CTrail *fx = new CTrail;
-
-					float duration;
-
-					if ( cent->gent->client->ps.saber[saberNum].type == SABER_SITH_SWORD
-						|| (!WP_SaberBladeUseSecondBladeStyle( &client->ps.saber[saberNum], bladeNum ) && client->ps.saber[saberNum].trailStyle == 1 )
-						|| ( WP_SaberBladeUseSecondBladeStyle( &client->ps.saber[saberNum], bladeNum ) && client->ps.saber[saberNum].trailStyle2 == 1 )
-					   )
-					{
-						fx->mShader = cgs.media.swordTrailShader;
-						duration = saberTrail->duration/2.0f; // stay around twice as long
-						VectorSet( rgb1, 32.0f, 32.0f, 32.0f ); // make the sith sword trail pretty faint
-					}
-					else if( client->ps.saber[saberNum].blade[bladeNum].color == SABER_BLACK )
-					{
-						fx->mShader = cgs.media.blackSaberBlurShader;
-						duration = saberTrail->duration/5.0f;
-					}
-					else
-					{
-						fx->mShader = cgs.media.saberBlurShader;
-						duration = saberTrail->duration/5.0f;
-					}
-
-					float oldAlpha = 1.0f - ( diff / duration );
-
-					// Go from new muzzle to new end...then to old end...back down to old muzzle...finally
-					//	connect back to the new muzzle...this is our trail quad
-					VectorCopy( org_, fx->mVerts[0].origin );
-					VectorMA( end, 3.0f, axis_[0], fx->mVerts[1].origin );
-
-					VectorCopy( saberTrail->tip, fx->mVerts[2].origin );
-					VectorCopy( saberTrail->base, fx->mVerts[3].origin );
-
-					// New muzzle
-					VectorCopy( rgb1, fx->mVerts[0].rgb );
-					fx->mVerts[0].alpha = 255.0f;
-
-					fx->mVerts[0].ST[0] = 0.0f;
-					fx->mVerts[0].ST[1] = 0.99f;
-					fx->mVerts[0].destST[0] = 0.99f;
-					fx->mVerts[0].destST[1] = 0.99f;
-
-					// new tip
-					VectorCopy( rgb1, fx->mVerts[1].rgb );
-					fx->mVerts[1].alpha = 255.0f;
-
-					fx->mVerts[1].ST[0] = 0.0f;
-					fx->mVerts[1].ST[1] = 0.0f;
-					fx->mVerts[1].destST[0] = 0.99f;
-					fx->mVerts[1].destST[1] = 0.0f;
-
-					// old tip
-					VectorCopy( rgb1, fx->mVerts[2].rgb );
-					fx->mVerts[2].alpha = 255.0f;
-
-					fx->mVerts[2].ST[0] = 0.99f - oldAlpha; // NOTE: this just happens to contain the value I want
-					fx->mVerts[2].ST[1] = 0.0f;
-					fx->mVerts[2].destST[0] = 0.99f + fx->mVerts[2].ST[0];
-					fx->mVerts[2].destST[1] = 0.0f;
-
-					// old muzzle
-					VectorCopy( rgb1, fx->mVerts[3].rgb );
-					fx->mVerts[3].alpha = 255.0f;
-
-					fx->mVerts[3].ST[0] = 0.99f - oldAlpha; // NOTE: this just happens to contain the value I want
-					fx->mVerts[3].ST[1] = 0.99f;
-					fx->mVerts[3].destST[0] = 0.99f + fx->mVerts[2].ST[0];
-					fx->mVerts[3].destST[1] = 0.99f;
-
-	//				fx->SetFlags( FX_USE_ALPHA );
-					FX_AddPrimitive( (CEffect**)&fx, duration );//SABER_TRAIL_TIME );
-				}
+				// we must always do this, even if we aren't active..otherwise we won't know where to pick up from
+				VectorCopy(org_, saberTrail->base);
+				VectorMA(end, 3.0f, axis_[0], saberTrail->tip);
+				saberTrail->lastTime = cg.time;
 			}
-
-			// we must always do this, even if we aren't active..otherwise we won't know where to pick up from
-			VectorCopy( org_, saberTrail->base );
-			VectorMA( end, 3.0f, axis_[0], saberTrail->tip );
-			saberTrail->lastTime = cg.time;
 		}
-	}
-	if ( cent->gent->client->ps.saber[saberNum].type == SABER_SITH_SWORD)
-	{
-		// don't need to do nuthin else
-		return;
-	}
 
-	if ( (!WP_SaberBladeUseSecondBladeStyle( &client->ps.saber[saberNum], bladeNum ) && (client->ps.saber[saberNum].saberFlags2&SFL2_NO_BLADE) )
-		|| ( WP_SaberBladeUseSecondBladeStyle( &client->ps.saber[saberNum], bladeNum ) && (client->ps.saber[saberNum].saberFlags2&SFL2_NO_BLADE2) ) )
-	{//don't draw a blade
-		if ( !noDlight )
-		{//but still do dlight
-			CG_DoSaberLight( &client->ps.saber[saberNum] );
-		}
-		return;
-	}
-	// Pass in the renderfx flags attached to the saber weapon model...this is done so that saber glows
-	//	will get rendered properly in a mirror...not sure if this is necessary??
-	CG_DoSaber(
-		org_, axis_[0], length,
-		client->ps.saber[saberNum].blade[bladeNum].lengthMax,
-		client->ps.saber[saberNum].blade[bladeNum].radius,
-		client->ps.saber[saberNum].blade[bladeNum].color,
-		renderfx, (qboolean)!noDlight);
-}
-else
-{
-
-	saberTrail_t	*saberTrail = &client->ps.saber[saberNum].blade[bladeNum].trail;
-	saberTrail->duration = 0;
-
-	if ( saberTrail->lastTime > cg.time )
-	{//after a pause, cg.time jumps ahead in time for one frame
-		//and lastTime gets set to that and will freak out, so, since
-		//it's never valid for saberTrail->lastTime to be > cg.time,
-		//cap it to cg.time here
-		saberTrail->lastTime = cg.time;
-	}
-
-	if(!saberTrail->base || !saberTrail->tip || !saberTrail->dualtip || !saberTrail->dualbase || !saberTrail->lastTime/* || !saberTrail->inAction*/)
-	{
-		VectorCopy( org_, saberTrail->base );
-		VectorMA( end, -1.5f, axis_[0], saberTrail->tip );
-		VectorCopy( saberTrail->tip, saberTrail->dualtip );
-		VectorCopy( saberTrail->base, saberTrail->dualbase );
-		saberTrail->lastTime = cg.time;
-		saberTrail->inAction = cg.time;
-		return;
-	}
-	else if ( cg.time > saberTrail->lastTime )
-	{
-		float dirlen0, dirlen1, dirlen2, lagscale;
-		vec3_t dir0, dir1, dir2;
-
-		VectorCopy( saberTrail->base, saberTrail->dualbase );
-		VectorCopy( saberTrail->tip, saberTrail->dualtip );
-
-		VectorCopy( org_, saberTrail->base );
-		VectorMA( end, -1.5f, axis_[0], saberTrail->tip );
-
-		VectorSubtract( saberTrail->dualtip, saberTrail->tip, dir0 );
-		VectorSubtract( saberTrail->dualbase, saberTrail->base, dir1 );
-		VectorSubtract( saberTrail->dualtip, saberTrail->dualbase, dir2 );
-
-		dirlen0 = VectorLength(dir0);
-		dirlen1 = VectorLength(dir1);
-		dirlen2 = VectorLength(dir2);
-
-		if ( saberMoveData[client->ps.saberMove].trailLength == 0 )
+		if (cent->gent->client->ps.saber[saberNum].type == SABER_SITH_SWORD)
 		{
-			dirlen0 *= 0.5f;
-			dirlen1 *= 0.3f;
+			// don't need to do nuthin else
+			return;
+		}
+
+		if ((!WP_SaberBladeUseSecondBladeStyle(&client->ps.saber[saberNum], bladeNum) && (client->ps.saber[saberNum].saberFlags2&SFL2_NO_BLADE))
+			|| (WP_SaberBladeUseSecondBladeStyle(&client->ps.saber[saberNum], bladeNum) && (client->ps.saber[saberNum].saberFlags2&SFL2_NO_BLADE2)))
+		{//don't draw a blade
+			if (!noDlight)
+			{//but still do dlight
+				CG_DoSaberLight(&client->ps.saber[saberNum]);
+			}
+			return;
+		}
+		// Pass in the renderfx flags attached to the saber weapon model...this is done so that saber glows
+		//	will get rendered properly in a mirror...not sure if this is necessary??
+		if ((cent->currentState.powerups & (1 << PW_CLOAKED)) || (cent->currentState.powerups & (1 << PW_UNCLOAKING)))
+		{
+			CG_DoSaber(org_, axis_[0], length, client->ps.saber[saberNum].blade[bladeNum].lengthMax, client->ps.saber[saberNum].blade[bladeNum].radius, client->ps.saber[saberNum].blade[bladeNum].color, renderfx, (qboolean)!noDlight);
 		}
 		else
 		{
-			dirlen0 *= 1.0f;
-			dirlen1 *= 0.5f;
+			CG_DoSaber(org_, axis_[0], length, client->ps.saber[saberNum].blade[bladeNum].lengthMax, client->ps.saber[saberNum].blade[bladeNum].radius, client->ps.saber[saberNum].blade[bladeNum].color, renderfx, (qboolean)!noDlight);
+		}
+	}
+	else
+	{
+
+		saberTrail_t	*saberTrail = &client->ps.saber[saberNum].blade[bladeNum].trail;
+		saberTrail->duration = 0;
+
+		if (saberTrail->lastTime > cg.time)
+		{
+			saberTrail->lastTime = cg.time;
 		}
 
-		lagscale = (cg.time - saberTrail->lastTime);
-		lagscale = 1-(lagscale*3/200);
-
-		if(lagscale < 0.1f)
-			lagscale = 0.1f;
-
-		VectorNormalize( dir0 );
-		VectorNormalize( dir1 );
-
-		VectorMA( saberTrail->tip, dirlen0*lagscale, dir0, saberTrail->dualtip );
-		VectorMA( saberTrail->base, dirlen1*lagscale, dir1, saberTrail->dualbase );
-		VectorSubtract( saberTrail->dualtip, saberTrail->dualbase, dir1 );
-		VectorNormalize( dir1 );
-
-		VectorMA( saberTrail->dualbase, dirlen2, dir1, saberTrail->dualtip );
-
-		saberTrail->lastTime = cg.time;
-	}
-
-		vec3_t	rgb1={255.0f,255.0f,255.0f};
-
-		switch( client->ps.saber[saberNum].blade[bladeNum].color )
+		if (!saberTrail->base || !saberTrail->tip || !saberTrail->dualtip || !saberTrail->dualbase || !saberTrail->lastTime)
 		{
-			case SABER_RED:
-				VectorSet( rgb1, 255.0f, 0.0f, 0.0f );
-				break;
-			case SABER_ORANGE:
-				VectorSet( rgb1, 253.0f, 125.0f, 80.0f );
-				break;
-			case SABER_YELLOW:
-				VectorSet( rgb1, 250.0f, 250.0f, 160.0f );
-				break;
-			case SABER_GREEN:
-				VectorSet( rgb1, 100.0f, 240.0f, 100.0f );
-				break;
-			case SABER_PURPLE:
-				VectorSet( rgb1, 196.0f, 0.0f, 196.0f );
-				break;
-			case SABER_BLUE:
-				VectorSet( rgb1, 0.0f, 0.0f, 255.0f );
-				break;
-			case SABER_UNSTABLE_RED:
-				VectorSet(rgb1, 255.0f, 0.0f, 0.0f);
-				break;
-			case SABER_BLACK:
-				VectorSet( rgb1, 255.0f, 255.0f, 255.0f );
-				break;
-			case SABER_CUSTOM:
-				VectorSet(rgb1, 0.92f, 0.24f, 0.72f);
-				break;
-			default://SABER_RGB
-				VectorSet( rgb1, ((client->ps.saber[saberNum].blade[bladeNum].color) & 0xff),
-						  ((client->ps.saber[saberNum].blade[bladeNum].color >> 8) & 0xff),
-						  ((client->ps.saber[saberNum].blade[bladeNum].color >> 16) & 0xff) );
-				break;
+			VectorCopy(org_, saberTrail->base);
+			VectorMA(end, -1.5f, axis_[0], saberTrail->tip);
+			VectorCopy(saberTrail->tip, saberTrail->dualtip);
+			VectorCopy(saberTrail->base, saberTrail->dualbase);
+			saberTrail->lastTime = cg.time;
+			saberTrail->inAction = cg.time;
+			return;
+		}
+		else if (cg.time > saberTrail->lastTime)
+		{
+			float dirlen0, dirlen1, dirlen2, lagscale;
+			vec3_t dir0, dir1, dir2;
+
+			VectorCopy(saberTrail->base, saberTrail->dualbase);
+			VectorCopy(saberTrail->tip, saberTrail->dualtip);
+
+			VectorCopy(org_, saberTrail->base);
+			VectorMA(end, -1.5f, axis_[0], saberTrail->tip);
+
+			VectorSubtract(saberTrail->dualtip, saberTrail->tip, dir0);
+			VectorSubtract(saberTrail->dualbase, saberTrail->base, dir1);
+			VectorSubtract(saberTrail->dualtip, saberTrail->dualbase, dir2);
+
+			dirlen0 = VectorLength(dir0);
+			dirlen1 = VectorLength(dir1);
+			dirlen2 = VectorLength(dir2);
+
+			if (saberMoveData[client->ps.saberMove].trailLength == 0)
+			{
+				dirlen0 *= 0.5f;
+				dirlen1 *= 0.3f;
+			}
+			else
+			{
+				dirlen0 *= 1.0f;
+				dirlen1 *= 0.5f;
+			}
+
+			lagscale = (cg.time - saberTrail->lastTime);
+			lagscale = 1 - (lagscale * 3 / 200);
+
+			if (lagscale < 0.1f)
+				lagscale = 0.1f;
+
+			VectorNormalize(dir0);
+			VectorNormalize(dir1);
+
+			VectorMA(saberTrail->tip, dirlen0*lagscale, dir0, saberTrail->dualtip);
+			VectorMA(saberTrail->base, dirlen1*lagscale, dir1, saberTrail->dualbase);
+			VectorSubtract(saberTrail->dualtip, saberTrail->dualbase, dir1);
+			VectorNormalize(dir1);
+
+			VectorMA(saberTrail->dualbase, dirlen2, dir1, saberTrail->dualtip);
+
+			saberTrail->lastTime = cg.time;
+		}
+
+		vec3_t	rgb1 = { 255.0f,255.0f,255.0f };
+
+		switch (client->ps.saber[saberNum].blade[bladeNum].color)
+		{
+		case SABER_RED:
+			VectorSet(rgb1, 255.0f, 0.0f, 0.0f);
+			break;
+		case SABER_ORANGE:
+			VectorSet(rgb1, 253.0f, 125.0f, 80.0f);
+			break;
+		case SABER_YELLOW:
+			VectorSet(rgb1, 250.0f, 250.0f, 160.0f);
+			break;
+		case SABER_GREEN:
+			VectorSet(rgb1, 100.0f, 240.0f, 100.0f);
+			break;
+		case SABER_PURPLE:
+			VectorSet(rgb1, 196.0f, 0.0f, 196.0f);
+			break;
+		case SABER_BLUE:
+			VectorSet(rgb1, 0.0f, 0.0f, 255.0f);
+			break;
+		case SABER_UNSTABLE_RED:
+			VectorSet(rgb1, 255.0f, 0.0f, 0.0f);
+			break;
+		case SABER_BLACK:
+			VectorSet(rgb1, 255.0f, 255.0f, 255.0f);
+			break;
+		case SABER_CUSTOM:
+			VectorSet(rgb1, 0.92f, 0.24f, 0.72f);
+			break;
+		case SABER_LIME:
+			VectorSet(rgb1, 100.0f, 240.0f, 100.0f);
+			break;
+		default://SABER_RGB
+			VectorSet(rgb1, ((client->ps.saber[saberNum].blade[bladeNum].color) & 0xff),
+				((client->ps.saber[saberNum].blade[bladeNum].color >> 8) & 0xff),
+				((client->ps.saber[saberNum].blade[bladeNum].color >> 16) & 0xff));
+			break;
 		}
 
 		CTrail *fx = new CTrail;
 
-		VectorCopy( saberTrail->base, fx->mVerts[0].origin );
-		VectorCopy( saberTrail->tip, fx->mVerts[1].origin );
-		VectorCopy( saberTrail->dualtip, fx->mVerts[2].origin );
-		VectorCopy( saberTrail->dualbase, fx->mVerts[3].origin );
+		VectorCopy(saberTrail->base, fx->mVerts[0].origin);
+		VectorCopy(saberTrail->tip, fx->mVerts[1].origin);
+		VectorCopy(saberTrail->dualtip, fx->mVerts[2].origin);
+		VectorCopy(saberTrail->dualbase, fx->mVerts[3].origin);
 
-		if( cg_SFXSabers.integer < 1 )
-		{// Draw the SFX blade. Yeah, it has to be here. Yes, the person who wrote this should be shot.
-		//[Movie Sabers]
+		if ((cent->currentState.powerups & (1 << PW_CLOAKED)) || (cent->currentState.powerups & (1 << PW_UNCLOAKING)))
+		{
 			CG_DoSaber(org_, axis_[0], length, client->ps.saber[saberNum].blade[bladeNum].lengthMax, client->ps.saber[saberNum].blade[bladeNum].radius, client->ps.saber[saberNum].blade[bladeNum].color, renderfx, (qboolean)!noDlight);
 		}
 		else if (!(cent->gent->client->ps.saber[saberNum].type == SABER_SITH_SWORD || client->ps.saber[saberNum].saberFlags2&SFL2_NO_BLADE))
@@ -9888,23 +9759,23 @@ else
 			}
 		}
 
-		if ( cg.time > saberTrail->inAction )
+		if (cg.time > saberTrail->inAction)
 		{
 			saberTrail->inAction = cg.time;
 
-			if ( cent->gent->client->ps.saber[saberNum].type == SABER_SITH_SWORD || client->ps.saber[saberNum].trailStyle == 1 )
+			if (cent->gent->client->ps.saber[saberNum].type == SABER_SITH_SWORD || client->ps.saber[saberNum].trailStyle == 1)
 			{
 				fx->mShader = cgs.media.swordTrailShader;
-				VectorSet( rgb1, 32.0f, 32.0f, 32.0f ); // make the sith sword trail pretty faint
+				VectorSet(rgb1, 32.0f, 32.0f, 32.0f); // make the sith sword trail pretty faint
 			}
 			else
 			{
 				fx->mShader = cgs.media.sfxSaberTrailShader;
 			}
-			fx->SetFlags( FX_USE_ALPHA );
+			fx->SetFlags(FX_USE_ALPHA);
 
 			// New muzzle
-			VectorCopy( rgb1, fx->mVerts[0].rgb );
+			VectorCopy(rgb1, fx->mVerts[0].rgb);
 			fx->mVerts[0].alpha = 255.0f;
 
 			fx->mVerts[0].ST[0] = 0.0f;
@@ -9913,7 +9784,7 @@ else
 			fx->mVerts[0].destST[1] = 4.0f;
 
 			// new tip
-			VectorCopy( rgb1, fx->mVerts[1].rgb );
+			VectorCopy(rgb1, fx->mVerts[1].rgb);
 			fx->mVerts[1].alpha = 255.0f;
 
 			fx->mVerts[1].ST[0] = 0.0f;
@@ -9922,7 +9793,7 @@ else
 			fx->mVerts[1].destST[1] = 0.0f;
 
 			// old tip
-			VectorCopy( rgb1, fx->mVerts[2].rgb );
+			VectorCopy(rgb1, fx->mVerts[2].rgb);
 			fx->mVerts[2].alpha = 255.0f;
 
 			fx->mVerts[2].ST[0] = 4.0f;
@@ -9931,7 +9802,7 @@ else
 			fx->mVerts[2].destST[1] = 0.0f;
 
 			// old muzzle
-			VectorCopy( rgb1, fx->mVerts[3].rgb );
+			VectorCopy(rgb1, fx->mVerts[3].rgb);
 			fx->mVerts[3].alpha = 255.0f;
 
 			fx->mVerts[3].ST[0] = 4.0f;
@@ -9939,18 +9810,17 @@ else
 			fx->mVerts[3].destST[0] = 4.0f;
 			fx->mVerts[3].destST[1] = 4.0f;
 
-			FX_AddPrimitive( (CEffect**)&fx, 0 );
+			FX_AddPrimitive((CEffect**)&fx, 0);
 		}
 
 		if ((client->ps.saber[saberNum].saberFlags2&SFL2_NO_BLADE))
 		{
-			if ( !noDlight )
+			if (!noDlight)
 			{
-				CG_DoSaberLight( &client->ps.saber[saberNum] );
+				CG_DoSaberLight(&client->ps.saber[saberNum]);
 			}
 		}
-
-}
+	}
 }
 
 void CG_AddSaberBlade(centity_t *cent, centity_t *scent, refEntity_t *saber, int renderfx, int modelIndex, vec3_t origin, vec3_t angles)
@@ -9968,415 +9838,7 @@ void CG_AddSaberBlade(centity_t *cent, centity_t *scent, refEntity_t *saber, int
 		}
 	}
 }
-
-/*
-static void CG_AddSaberBlades( centity_t *cent, int renderfx, vec3_t origin, vec3_t angles, int saberNum )
-{
-	if ( cent->gent->client )
-	{
-		for ( int i = 0; i < cent->gent->client->ps.saber[saberNum].numBlades; i++ )
-		{
-			CG_AddSaberBladeGo( cent, cent, NULL, renderfx, cent->gent->weaponModel[saberNum], origin, angles, saberNum, i );
-		}
-	}
-}
-*/
 //--------------- END SABER STUFF --------
-
-/*
- ================
- GetSelfLegAnimPoint
- ================
- */
-//Get the point in the leg animation and return a percentage of the current point in the anim between 0 and the total anim length (0.0f - 1.0f)
-float GetSelfLegAnimPoint(void)
-{
-	float		current = 0.0f;
-	int			end = 0;
-	int			start = 0;
-	if (!!gi.G2API_GetBoneAnimIndex(&
-		cg_entities[cg.snap->ps.viewEntity].gent->ghoul2[cg_entities[cg.snap->ps.viewEntity].gent->playerModel],
-		cg_entities[cg.snap->ps.viewEntity].gent->rootBone,
-		level.time,
-		&current,
-		&start,
-		&end,
-		NULL,
-		NULL,
-		NULL))
-	{
-		float percentComplete = (current - start) / (end - start);
-
-		return percentComplete;
-	}
-
-	return 0.0f;
-
-}
-
-
-/*
-  ================
-  GetSelfTorsoAnimPoint
-  ================
-  */
-//Get the point in the torso animation and return a percentage of the current point in the anim between 0 and the total anim length (0.0f - 1.0f)
-float GetSelfTorsoAnimPoint(void)
-{
-	float		current = 0.0f;
-	int			end = 0;
-	int			start = 0;
-	if (!!gi.G2API_GetBoneAnimIndex(&
-		cg_entities[cg.snap->ps.viewEntity].gent->ghoul2[cg_entities[cg.snap->ps.viewEntity].gent->playerModel],
-		cg_entities[cg.snap->ps.viewEntity].gent->lowerLumbarBone,
-		level.time,
-		&current,
-		&start,
-		&end,
-		NULL,
-		NULL,
-		NULL))
-	{
-		float percentComplete = (current - start) / (end - start);
-
-		return percentComplete;
-	}
-
-	return 0.0f;
-}
-
-
-/*
-  ===============
-  SmoothTrueView
-  Purpose:  Uses the currently setup model-based First Person View to calculation the final viewangles.  Features the
-  following:
-  1.  Simulates allowable eye movement by makes a deadzone around the inputed viewangles vs the desired
-  viewangles of cg.refdef.viewangles
-  2.  Prevents the sudden view flipping during moves where your camera is suppose to flip 360 on the pitch (x)
-  pitch (x) axis.
-  ===============
-  */
-
-void SmoothTrueView(vec3_t eyeAngles)
-{
-	float LegAnimPoint = GetSelfLegAnimPoint();
-	float TorsoAnimPoint = GetSelfTorsoAnimPoint();
-
-	//counter
-	int		i;
-
-	//cg.refdef.viewangles in relation to eyeAngles
-	float	AngDiff;
-
-	qboolean	eyeRange = qtrue;
-	qboolean	UseRefDef = qfalse;
-	qboolean	DidSpecial = qfalse;
-
-	//Debug messages
-	//Com_Printf("eyeAngles: %f, %f, %f\n", eyeAngles[0], eyeAngles[1], eyeAngles[2]);
-	//Com_Printf("cg.refdef.viewangles: %f, %f, %f\n", cg.refdef.viewangles[0], cg.refdef.viewangles[1], cg.refdef.viewangles[2]);
-
-
-
-	//RAFIXME: See if I can find a link this to the prediction stuff.  I think the snap is of just the last gamestate snap
-
-	//Rolls
-	if (cg_trueroll.integer)
-	{
-		if (((cg.snap->ps.legsAnim) == BOTH_WALL_RUN_LEFT)
-			|| ((cg.snap->ps.legsAnim) == BOTH_WALL_RUN_RIGHT)
-			|| ((cg.snap->ps.legsAnim) == BOTH_WALL_RUN_LEFT_STOP)
-			|| ((cg.snap->ps.legsAnim) == BOTH_WALL_RUN_RIGHT_STOP)
-			|| ((cg.snap->ps.legsAnim) == BOTH_WALL_RUN_LEFT_FLIP)
-			|| ((cg.snap->ps.legsAnim) == BOTH_WALL_RUN_RIGHT_FLIP)
-			|| ((cg.snap->ps.legsAnim) == BOTH_WALL_FLIP_LEFT)
-			|| ((cg.snap->ps.legsAnim) == BOTH_WALL_FLIP_RIGHT))
-		{//Roll moves that look good with eye range
-			eyeRange = qtrue;
-			DidSpecial = qtrue;
-		}
-		else if (cg_trueroll.integer == 1)
-		{//Use simple roll for the more complicated rolls
-			if (((cg.snap->ps.legsAnim) == BOTH_FLIP_L)
-				|| ((cg.snap->ps.legsAnim) == BOTH_ROLL_L))
-			{//Left rolls
-				VectorCopy(cg.refdefViewAngles, eyeAngles);
-				eyeAngles[2] += AngleNormalize180((360 * LegAnimPoint));
-				AngleNormalize180(eyeAngles[2]);
-				eyeRange = qfalse;
-				DidSpecial = qtrue;
-			}
-			else if (((cg.snap->ps.legsAnim) == BOTH_FLIP_R)
-				|| ((cg.snap->ps.legsAnim) == BOTH_ROLL_R))
-			{//Right rolls
-				VectorCopy(cg.refdefViewAngles, eyeAngles);
-				eyeAngles[2] += AngleNormalize180((360 - (360 * LegAnimPoint)));
-				AngleNormalize180(eyeAngles[2]);
-				eyeRange = qfalse;
-				DidSpecial = qtrue;
-			}
-		}
-		else
-		{//You're here because you're using cg_trueroll.integer == 2
-			if (((cg.snap->ps.legsAnim) == BOTH_FLIP_L)
-				|| ((cg.snap->ps.legsAnim) == BOTH_ROLL_L)
-				|| ((cg.snap->ps.legsAnim) == BOTH_FLIP_R)
-				|| ((cg.snap->ps.legsAnim) == BOTH_ROLL_R))
-			{//Roll animation, lock the eyemovement
-				eyeRange = qfalse;
-				DidSpecial = qtrue;
-			}
-		}
-	}
-	else if (((cg.snap->ps.legsAnim) == BOTH_WALL_RUN_LEFT)
-		|| ((cg.snap->ps.legsAnim) == BOTH_WALL_RUN_RIGHT)
-		|| ((cg.snap->ps.legsAnim) == BOTH_WALL_RUN_LEFT_STOP)
-		|| ((cg.snap->ps.legsAnim) == BOTH_WALL_RUN_RIGHT_STOP)
-		|| ((cg.snap->ps.legsAnim) == BOTH_WALL_RUN_LEFT_FLIP)
-		|| ((cg.snap->ps.legsAnim) == BOTH_WALL_RUN_RIGHT_FLIP)
-		|| ((cg.snap->ps.legsAnim) == BOTH_WALL_FLIP_LEFT)
-		|| ((cg.snap->ps.legsAnim) == BOTH_WALL_FLIP_RIGHT)
-		|| ((cg.snap->ps.legsAnim) == BOTH_FLIP_L)
-		|| ((cg.snap->ps.legsAnim) == BOTH_ROLL_L)
-		|| ((cg.snap->ps.legsAnim) == BOTH_FLIP_R)
-		|| ((cg.snap->ps.legsAnim) == BOTH_ROLL_R))
-	{//you don't want rolling so use cg.refdef.viewangles as the view
-		UseRefDef = qtrue;
-	}
-
-	//Flips
-	if (cg_trueflip.integer)
-	{
-		if (cg.snap->ps.legsAnim == BOTH_WALL_FLIP_BACK1)
-		{//Flip moves that look good with the eyemovement locked
-			eyeRange = qfalse;
-			DidSpecial = qtrue;
-		}
-		else if (cg_trueflip.integer == 1)
-		{//Use simple flip for the more complicated flips
-			if (((cg.snap->ps.legsAnim) == BOTH_FLIP_F)
-				|| ((cg.snap->ps.legsAnim) == BOTH_ROLL_F))
-			{//forward flips
-				VectorCopy(cg.refdefViewAngles, eyeAngles);
-				eyeAngles[0] += AngleNormalize180(360 - (360 * LegAnimPoint));
-				AngleNormalize180(eyeAngles[0]);
-				eyeRange = qfalse;
-				DidSpecial = qtrue;
-			}
-			else if (((cg.snap->ps.legsAnim) == BOTH_FLIP_B)
-				|| ((cg.snap->ps.legsAnim) == BOTH_ROLL_B)
-				|| ((cg.snap->ps.legsAnim) == BOTH_FLIP_BACK1))
-			{//back flips
-				VectorCopy(cg.refdefViewAngles, eyeAngles);
-				eyeAngles[0] += AngleNormalize180((360 * LegAnimPoint));
-				AngleNormalize180(eyeAngles[0]);
-				eyeRange = qfalse;
-				DidSpecial = qtrue;
-			}
-		}
-		else
-		{//You're here because you're using cg_trueflip.integer = 2
-			if (((cg.snap->ps.legsAnim) == BOTH_FLIP_F)
-				|| ((cg.snap->ps.legsAnim) == BOTH_ROLL_F)
-				|| ((cg.snap->ps.legsAnim) == BOTH_FLIP_B)
-				|| ((cg.snap->ps.legsAnim) == BOTH_ROLL_B)
-				|| ((cg.snap->ps.legsAnim) == BOTH_FLIP_BACK1))
-			{//Flip animation and using cg_trueflip.integer = 2, lock the eyemovement
-				eyeRange = qfalse;
-				DidSpecial = qtrue;
-			}
-		}
-	}
-	else if (((cg.snap->ps.legsAnim) == BOTH_WALL_FLIP_BACK1)
-		|| ((cg.snap->ps.legsAnim) == BOTH_FLIP_F)
-		|| ((cg.snap->ps.legsAnim) == BOTH_ROLL_F)
-		|| ((cg.snap->ps.legsAnim) == BOTH_FLIP_B)
-		|| ((cg.snap->ps.legsAnim) == BOTH_ROLL_B)
-		|| ((cg.snap->ps.legsAnim) == BOTH_FLIP_BACK1))
-	{//you don't want flipping so use cg.refdef.viewangles as the view
-		UseRefDef = qtrue;
-	}
-
-
-
-	if (cg_truespin.integer)
-	{
-		if (cg_truespin.integer == 1)
-		{//Do a simulated Spin for the more complicated spins
-			if (((cg.snap->ps.torsoAnim) == BOTH_T1_TL_BR)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T1__L_BR)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T1__L__R)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T1_BL_BR)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T1_BL__R)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T1_BL_TR)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T2__L_BR)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T2_BL_BR)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T2_BL__R)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T3__L_BR)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T3_BL_BR)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T3_BL__R)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T4__L_BR)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T4_BL_BR)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T4_BL__R)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T5_TL_BR)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T5__L_BR)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T5__L__R)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T5_BL_BR)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T5_BL__R)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T5_BL_TR)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_ATTACK_BACK)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_CROUCHATTACKBACK1)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_BUTTERFLY_LEFT)
-				//This technically has 2 spins and seems to have been labeled wrong
-				|| ((cg.snap->ps.legsAnim) == BOTH_FJSS_TR_BL))
-			{//Left Spins
-				VectorCopy(cg.refdefViewAngles, eyeAngles);
-				eyeAngles[1] += AngleNormalize180((360 - (360 * TorsoAnimPoint)));
-				AngleNormalize180(eyeAngles[1]);
-				eyeRange = qfalse;
-				DidSpecial = qtrue;
-			}
-			else if (((cg.snap->ps.torsoAnim) == BOTH_T1_BR_BL)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T1__R__L)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T1__R_BL)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T1_TR_BL)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T1_BR_TL)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T1_BR__L)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T2_BR__L)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T2_BR_BL)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T2__R_BL)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T3_BR__L)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T3_BR_BL)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T3__R_BL)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T4_BR__L)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T4_BR_BL)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T4__R_BL)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T5_BR_BL)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T5__R__L)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T5__R_BL)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T5_TR_BL)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T5_BR_TL)
-				|| ((cg.snap->ps.torsoAnim) == BOTH_T5_BR__L)
-				//This technically has 2 spins
-				|| ((cg.snap->ps.legsAnim) == BOTH_BUTTERFLY_RIGHT)
-				//This technically has 2 spins and seems to have been labeled wrong
-				|| ((cg.snap->ps.legsAnim) == BOTH_FJSS_TL_BR))
-			{//Right Spins
-				VectorCopy(cg.refdefViewAngles, eyeAngles);
-				eyeAngles[1] += AngleNormalize180((360 * TorsoAnimPoint));
-				AngleNormalize180(eyeAngles[1]);
-				eyeRange = qfalse;
-				DidSpecial = qtrue;
-			}
-		}
-		else
-		{//You're here because you're using cg_truespin.integer == 2
-			if (PM_SpinningSaberAnim((cg.snap->ps.torsoAnim))
-				&& ((cg.snap->ps.torsoAnim) != BOTH_JUMPFLIPSLASHDOWN1)
-				&& ((cg.snap->ps.torsoAnim) != BOTH_JUMPFLIPSTABDOWN))
-			{//Flip animation and using cg_trueflip.integer = 2, lock the eyemovement
-				eyeRange = qfalse;
-				DidSpecial = qtrue;
-			}
-		}
-	}
-	else if (PM_SpinningSaberAnim((cg.snap->ps.torsoAnim))
-		&& ((cg.snap->ps.torsoAnim) != BOTH_JUMPFLIPSLASHDOWN1)
-		&& ((cg.snap->ps.torsoAnim) != BOTH_JUMPFLIPSTABDOWN))
-	{//you don't want spinning so use cg.refdef.viewangles as the view
-		UseRefDef = qtrue;
-	}
-
-	//Prevent camera flicker while landing.
-	if (((cg.snap->ps.legsAnim) == BOTH_LAND1)
-		|| ((cg.snap->ps.legsAnim) == BOTH_LAND2)
-		|| ((cg.snap->ps.legsAnim) == BOTH_LANDBACK1)
-		|| ((cg.snap->ps.legsAnim) == BOTH_LANDLEFT1)
-		|| ((cg.snap->ps.legsAnim) == BOTH_LANDRIGHT1))
-	{
-		UseRefDef = qtrue;
-	}
-
-	//Prevent the camera flicker while switching to the saber.
-	if (((cg.snap->ps.torsoAnim) == BOTH_STAND2TO1)
-		|| ((cg.snap->ps.torsoAnim) == BOTH_STAND1TO2))
-	{
-		UseRefDef = qtrue;
-	}
-
-	//special camera view for blue backstab
-	if ((cg.snap->ps.torsoAnim) == BOTH_A2_STABBACK1)
-	{
-		eyeRange = qfalse;
-		DidSpecial = qtrue;
-	}
-
-	if (((cg.snap->ps.torsoAnim) == BOTH_JUMPFLIPSLASHDOWN1)
-		|| ((cg.snap->ps.torsoAnim) == BOTH_JUMPFLIPSLASHDOWN1))
-	{
-		eyeRange = qfalse;
-		DidSpecial = qtrue;
-	}
-
-
-	if (UseRefDef)
-	{
-		VectorCopy(cg.refdefViewAngles, eyeAngles);
-	}
-	else
-	{
-		//Movement Roll dampener
-		if (!DidSpecial)
-		{
-			if (!cg_truemoveroll.integer)
-			{
-				eyeAngles[2] = cg.refdefViewAngles[2];
-			}
-			else if (cg_truemoveroll.integer == 1)
-			{//dampen the movement leaning
-				eyeAngles[2] *= .5;
-			}
-		}
-
-		//eye movement
-		if (eyeRange)
-		{//allow eye motion
-			for (i = 0; i < 2; i++)
-			{
-				int fov;
-				if (cg_truefov.integer)
-				{
-					fov = cg_truefov.value;
-				}
-				else
-				{
-					fov = cg_fov.value;
-				}
-
-				AngDiff = eyeAngles[i] - cg.refdefViewAngles[i];
-
-				AngDiff = AngleNormalize180(AngDiff);
-				if (fabs(AngDiff) > fov)
-				{
-					if (AngDiff < 0)
-					{
-						eyeAngles[i] += fov;
-					}
-					else
-					{
-						eyeAngles[i] -= fov;
-					}
-				}
-				else
-				{
-					eyeAngles[i] = cg.refdefViewAngles[i];
-				}
-				AngleNormalize180(eyeAngles[i]);
-			}
-		}
-	}
-}
 
 /*
 ===============
@@ -10467,7 +9929,7 @@ void CG_Player(centity_t *cent)
 		return;
 	}
 
-	if (cent->currentState.number == 0 && !cg.renderingThirdPerson && (!cg_trueguns.integer || cg.zoomMode))//!cg_thirdPerson.integer )
+	if(cent->currentState.number == 0 && !cg.renderingThirdPerson )//!cg_thirdPerson.integer )
 	{
 		calcedMp = qtrue;
 	}
@@ -10485,6 +9947,8 @@ void CG_Player(centity_t *cent)
 	{
 		wData = &weaponData[cent->currentState.weapon];
 	}
+
+	CG_BreathPuffsVader(cent);
 
 	if (cent->gent->ghoul2.size())	//do we have ghoul models attached?
 	{
@@ -10945,6 +10409,14 @@ void CG_Player(centity_t *cent)
 							{//dead, didn't actively turn it off
 								cent->gent->client->ps.saber[saberNum].blade[bladeNum].length -= cent->gent->client->ps.saber[saberNum].blade[bladeNum].lengthMax / 10 * cg.frametime / 100 * cg_ignitionSpeed.value;
 							}
+							else if (cent->gent->client->NPC_class == CLASS_DESANN)
+							{
+								cent->gent->client->ps.saber[saberNum].blade[bladeNum].length -= cent->gent->client->ps.saber[saberNum].blade[bladeNum].lengthMax / 10 * cg.frametime / 100 * cg_ignitionSpeedvader.value;
+							}
+							else if (cent->gent->client->NPC_class == CLASS_VADER)
+							{
+								cent->gent->client->ps.saber[saberNum].blade[bladeNum].length -= cent->gent->client->ps.saber[saberNum].blade[bladeNum].lengthMax / 10 * cg.frametime / 100 * cg_ignitionSpeedvader.value;
+							}
 							else
 							{//actively turned it off, shrink faster
 								cent->gent->client->ps.saber[saberNum].blade[bladeNum].length -= cent->gent->client->ps.saber[saberNum].blade[bladeNum].lengthMax / 10 * cg.frametime / 100 * cg_ignitionSpeed.value;
@@ -10989,6 +10461,14 @@ void CG_Player(centity_t *cent)
 								{//just keep it full length!
 									//NOTE: does this mean it will go through walls now...?
 									cent->gent->client->ps.saber[saberNum].blade[bladeNum].length = cent->gent->client->ps.saber[saberNum].blade[bladeNum].lengthMax;
+								}
+								else if (cent->gent->client->NPC_class == CLASS_DESANN)
+								{
+									cent->gent->client->ps.saber[saberNum].blade[bladeNum].length += cent->gent->client->ps.saber[saberNum].blade[bladeNum].lengthMax / 10 * cg.frametime / 100 * cg_ignitionSpeedvader.value;
+								}
+								else if (cent->gent->client->NPC_class == CLASS_VADER)
+								{
+									cent->gent->client->ps.saber[saberNum].blade[bladeNum].length += cent->gent->client->ps.saber[saberNum].blade[bladeNum].lengthMax / 10 * cg.frametime / 100 * cg_ignitionSpeedvader.value;
 								}
 								else
 								{
@@ -11640,7 +11120,7 @@ Ghoul2 Insert End
 		{//no viewentity
 			if ( cent->currentState.number == cg.snap->ps.clientNum )
 			{//I am the player
-				if (cg.zoomMode || (!cg_trueguns.integer && cg.snap->ps.weapon != WP_SABER && cg.snap->ps.weapon != WP_MELEE) || (cg.snap->ps.weapon == WP_SABER && cg_truesaberonly.integer))
+				if ( cg.snap->ps.weapon != WP_SABER && cg.snap->ps.weapon != WP_MELEE )
 				{//not using saber or fists
 					renderfx = RF_THIRD_PERSON;			// only draw in mirrors
 				}
@@ -11648,7 +11128,7 @@ Ghoul2 Insert End
 		}
 		else if ( cent->currentState.number == cg.snap->ps.viewEntity )
 		{//I am the view entity
-			if (cg.zoomMode || (!cg_trueguns.integer && cg.snap->ps.weapon != WP_SABER && cg.snap->ps.weapon != WP_MELEE) || (cg.snap->ps.weapon == WP_SABER && cg_truesaberonly.integer))
+			if ( cg.snap->ps.weapon != WP_SABER && cg.snap->ps.weapon != WP_MELEE )
 			{//not using saber or fists
 				renderfx = RF_THIRD_PERSON;			// only draw in mirrors
 			}

@@ -1383,9 +1383,6 @@ int WPDEBUG_SaberColor( saber_colors_t saberColor )
 		case SABER_UNSTABLE_RED:
 			return 0x000000ff;
 			break;
-		case SABER_LIME:
-			return 0x0000ff00;
-			break;
 		default:
 			return 0x00ffffff;//white
 			break;
@@ -7269,7 +7266,7 @@ void WP_SaberPull( gentity_t *self, gentity_t *saber )
 	}
 }
 
-const char *saberColorStringForColor[SABER_LIME + 1] =
+const char *saberColorStringForColor[SABER_PURPLE + 1] =
 {
 	"red",//SABER_RED
 	"orange",//SABER_ORANGE
@@ -7277,9 +7274,6 @@ const char *saberColorStringForColor[SABER_LIME + 1] =
 	"green",//SABER_GREEN
 	"blue",//SABER_BLUE
 	"purple",//SABER_PURPLE
-	// Custom saber glow, blade & dlight color code
-	"custom",//SABER_CUSTOM
-	"lime"//SABER_LIME
 };
 
 // Check if we are throwing it, launch it if needed, update position if needed.
